@@ -258,6 +258,37 @@ async function run(browser) {
         throw new Error("no error");
       });
     }
+    await check("set_dialog_rule answers dialogs opened later, and the next action reports them", async () => {
+      const set = await text("set_dialog_rule", { answer: "accept", promptText: "ruled" });
+      if (!/From now on/.test(set)) throw new Error(set);
+      await evaluate(`(setTimeout(() => (window.__t.later = [confirm("Later?"), prompt("Name later?", "x")]), 50), true)`);
+      await sleep(800);
+      const later = await evaluate("window.__t.later");
+      if (JSON.stringify(later) !== '[true,"ruled"]') throw new Error(`answers: ${JSON.stringify(later)}`);
+      const r = await text("click", { name: "Alert" });
+      for (const s of ['confirm dialog saying "Later?" appeared and was accepted', 'prompt dialog saying "Name later?"', 'alert dialog saying "Plain alert" appeared and was closed']) {
+        if (!r.includes(s)) throw new Error(`missing "${s}" in: ${r}`);
+      }
+      await text("set_dialog_rule", { answer: "off" });
+      const r2 = await text("click", { name: "Confirm", dialog: "dismiss" });
+      if ((await evaluate("window.__t.confirm")) !== false) throw new Error(`after off: ${r2}`);
+    });
+    if (browser === "firefox") {
+      await check("Firefox: handle_dialog reload: true closes a dialog Choro can't answer", async () => {
+        await evaluate(`(setTimeout(() => confirm("Stuck?"), 50), true)`);
+        await sleep(800);
+        let err = "";
+        try {
+          await text("handle_dialog", { accept: true });
+        } catch (e) {
+          err = e.message;
+        }
+        if (!/reload: true/.test(err)) throw new Error(`no hint: ${err}`);
+        const r = await text("handle_dialog", { accept: true, reload: true });
+        if (!/reloaded the tab/.test(r)) throw new Error(r);
+        if ((await evaluate("1 + 1")) !== 2) throw new Error("page not usable after reload");
+      });
+    }
     await check("full-page screenshot", async () => {
       const { images } = await tool("screenshot", { fullPage: true, format: "png" });
       if (!images.length || images[0].data.length < 10_000) throw new Error("no image");

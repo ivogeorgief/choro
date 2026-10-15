@@ -30,16 +30,20 @@
   let connected = false; // on only in tabs an agent works in
   listen.call(window, "__choro_status", (e) => (connected = e.detail === "on"));
 
-  // While an action's `dialog` option is in force, dialogs are answered here.
+  // While an action's `dialog` option is in force, or the tab has a standing
+  // rule (set_dialog_rule), dialogs are answered here. The action's comes first.
   let policy = null;
-  listen.call(window, "__choro_policy", (e) => {
+  let rule = null;
+  const parsed = (e) => {
     try {
-      policy = parse(e.detail);
+      return parse(e.detail);
     } catch {
-      policy = null;
+      return null;
     }
-  });
-  const dialogPolicy = () => (policy && now() < policy.until ? policy : null);
+  };
+  listen.call(window, "__choro_policy", (e) => (policy = parsed(e)));
+  listen.call(window, "__choro_rule", (e) => (rule = parsed(e)));
+  const dialogPolicy = () => (policy && now() < policy.until ? policy : rule);
 
   const emit = (type, detail) => {
     try {

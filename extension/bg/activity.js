@@ -130,7 +130,9 @@ async function describeSideEffects(tabId, since, tab = null) {
     const file = item.filename ? item.filename.split(/[\\/]/).pop() : item.url;
     out += `\nStarted a download: ${file} (${item.state === "complete" ? "finished" : item.state})`;
   }
-  for (const d of claimsSince(tabId, "dialog", since)) {
+  // Dialogs a standing rule answered between calls are reported with the next action.
+  for (const d of (pageClaims.get(tabId) || []).filter((c) => c.kind === "dialog" && (c.at >= since || !c.reported))) {
+    d.reported = true;
     const answer = d.type === "alert" ? "closed" : d.accept ? "accepted" : "dismissed";
     out += `\n${capitalize(describeDialog(d))} appeared and was ${answer}.`;
   }

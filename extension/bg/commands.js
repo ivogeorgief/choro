@@ -3,13 +3,13 @@
 import * as actions from "./actions.js";
 import { navigateAndWait, settleAfterAction, waitForLoad } from "./activity.js";
 import { cdp, holdTab, releaseTab } from "./cdp.js";
-import { answerDialog, pageWork } from "./dialogs.js";
+import { answerDialog, describeDialog, forgetDialog, openDialog, pageWork, ruleOrigin, setDialogRule } from "./dialogs.js";
 import { snapshotWithFrames } from "./frames.js";
-import { evaluateInPage, runInPage } from "./inpage.js";
+import { ensurePageHooks, evaluateInPage, runInPage, setTabHooks } from "./inpage.js";
 import { listRequests, requestDetails, waitForRequest } from "./network.js";
 import { screenshot } from "./screenshots.js";
 import { assertNotOthers, claimTab, getTab, tabUsage } from "./sessions.js";
-import { describeTab, HAS_DEBUGGER, isScriptable, noDebuggerError, normalizeUrl, sleep } from "./util.js";
+import { describeTab, HAS_DEBUGGER, isScriptable, noDebuggerError, normalizeUrl, sleep, withTimeout } from "./util.js";
 
 const MAX_WAIT_MS = 120_000;
 
@@ -226,11 +226,51 @@ const commands = {
     return waitForRequest((await getTab(tabId, ctx)).id, opts, Math.min(timeoutMs, MAX_WAIT_MS));
   },
 
-  async handle_dialog({ tabId, accept, promptText }, ctx) {
+  async handle_dialog({ tabId, accept, promptText, reload = false }, ctx) {
     const since = Date.now();
     const tab = await getTab(tabId, ctx);
-    const { answered, text } = await answerDialog(tab, accept, promptText);
-    return answered ? text + (await settleAfterAction(tab.id, tab.url, since)) : text;
+    const res = await answerDialog(tab, accept, promptText, { canReload: reload });
+    if (res.reload) {
+      // Leaving the page closes its dialog; the page's unsaved state goes with it.
+      forgetDialog(tab.id);
+      const { tab: loaded, note } = await navigateAndWait(tab, () => chrome.tabs.reload(tab.id));
+      forgetDialog(tab.id);
+      return `Couldn't answer ${res.text}, so reloaded the tab to close it (unsaved changes on the page are lost). ` +
+        `Page: ${loaded?.title ?? ""} — ${loaded?.url ?? tab.url}${note ? `\n${note}` : ""}`;
+    }
+    return res.answered ? res.text + (await settleAfterAction(tab.id, tab.url, since)) : res.text;
+  },
+
+  async set_dialog_rule({ tabId, answer, promptText }, ctx) {
+    const tab = await getTab(tabId, ctx);
+    if (answer === "off") {
+      await setDialogRule(tab.id, null);
+      await setTabHooks(tab.id, true);
+      return `Dialogs in tab ${tab.id} are no longer answered automatically.`;
+    }
+    const origin = ruleOrigin(tab.url);
+    if (!origin || origin === "null" || !isScriptable(tab.url)) throw new Error(`Choro can't watch dialogs on ${tab.url}.`);
+    const accept = answer === "accept";
+    await setDialogRule(tab.id, { accept, promptText: promptText ?? null, origin });
+    // A page loaded before Choro connected has no hooks yet (a page frozen by a dialog can't get them now).
+    await withTimeout(ensurePageHooks(tab.id), 2_000, () => new Error("busy")).catch(() => {});
+    await setTabHooks(tab.id, true);
+    const how = accept
+      ? `accepted (OK${promptText != null ? `, prompts answered with ${JSON.stringify(promptText)}` : ", prompts keep their default text"})`
+      : "dismissed (Cancel; alerts are closed)";
+    let text =
+      `From now on, dialogs in tab ${tab.id} are ${how} in the page and never shown, until set_dialog_rule with ` +
+      `answer: "off" or the tab leaves ${origin}. Each one is reported in the next action's result.`;
+    // One already open: answer it now if Choro can.
+    const open = openDialog(tab.id);
+    if (open) {
+      const res = await answerDialog(tab, accept, promptText, { canReload: true }).catch((err) => ({ text: err.message }));
+      text += res.answered
+        ? `\n${res.text}.`
+        : `\nThe page is already showing ${describeDialog(open)}, which opened before the rule; ` +
+          "handle_dialog can answer it (or reload: true closes it by reloading the tab).";
+    }
+    return text;
   },
 
   async evaluate({ tabId, expression }, ctx) {

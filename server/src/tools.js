@@ -301,12 +301,29 @@ export const TOOLS = [
   [
     "handle_dialog",
     "Accept or dismiss a JavaScript dialog (alert, confirm, prompt) that is blocking the page. Other tools report " +
-      "when one is, with its text. A dialog Choro couldn't take over can only be dismissed; in Firefox only the user " +
-      "can answer it (pass dialog to the action instead).",
+      "when one is, with its text. A dialog Choro couldn't take over can only be dismissed, and in Firefox an open " +
+      "dialog can't be answered at all; reload: true then closes it by reloading the tab. To avoid both, pass dialog " +
+      "to the action that opens it, or set a rule with set_dialog_rule.",
     {
       tabId,
       accept: z.boolean().describe("true = OK, false = Cancel"),
       promptText: z.string().optional().describe("Text to enter in a prompt dialog before accepting"),
+      reload: z
+        .boolean()
+        .optional()
+        .describe("If the dialog can't be answered, reload the tab to close it. Unsaved changes on the page are lost."),
+    },
+  ],
+  [
+    "set_dialog_rule",
+    "Have Choro answer every JavaScript dialog (alert, confirm, prompt) in a tab from now on, also ones opened later by " +
+      "timers or background code, and in Firefox. They are answered in the page, never shown, and each one is " +
+      "reported (type and text) in the next action's result. The rule lasts until answer: \"off\" or the tab leaves " +
+      "the site. For a single action, its dialog option is simpler.",
+    {
+      tabId,
+      answer: z.enum(["accept", "dismiss", "off"]).describe('"accept" = OK, "dismiss" = Cancel, "off" = stop answering'),
+      promptText: z.string().optional().describe("Text to answer prompts with (with accept; default: the prompt's own default text)"),
     },
   ],
   [

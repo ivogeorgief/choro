@@ -53,6 +53,7 @@ the server the same one: `claude mcp add -e CHORO_PORT=9000 choro -- npx -y chor
 | `upload_file` | Attach local files to a file input (also a hidden one behind an "Upload" button) or drop them on a drag-and-drop zone; no file dialog opens. Up to 32 MB per call. |
 | `scroll`, `wait_for` | Scroll the page, an element into view, or inside a container (feeds, virtual lists); wait for text or an element. |
 | `handle_dialog` | Answer an `alert`, `confirm` or `prompt` that blocks the page. |
+| `set_dialog_rule` | Answer every dialog in a tab from now on (accept or dismiss), each one reported. |
 | `network_requests`, `network_request`, `wait_for_request` | The tab's requests with status and timing, one request's headers and bodies, or waiting for one (e.g. the POST a Save button sends). |
 | `list_frames`, `evaluate` | Every frame on the page; run JavaScript in the page. |
 
@@ -66,8 +67,11 @@ with React, Vue, rich text editors and the like and shows no UI. A few sites ign
 debugged" bar while that runs.
 
 **Dialogs.** Pass `dialog: "accept"` or `"dismiss"` (and `promptText`) to the action that opens an
-`alert`/`confirm`/`prompt`, and Choro answers it in the page. Otherwise the next call reports the dialog and its
-text, and `handle_dialog` answers it (in Chrome; in Firefox only the user can).
+`alert`/`confirm`/`prompt`, and Choro answers it in the page. `set_dialog_rule` does the same for every dialog in
+a tab until it's switched off or the tab leaves the site, including dialogs that timers open later; each answered
+dialog is reported with its text. Otherwise the next call reports the dialog and its text, and `handle_dialog`
+answers it. In Firefox an open dialog can't be answered by an extension; `handle_dialog` with `reload: true` closes
+it by reloading the tab.
 
 **Several agents at once.** Any number of agent sessions can share the browser. The first `choro-mcp` to start
 owns the port and the others connect through it; when it exits, another one takes over. Each session has its own
@@ -81,7 +85,7 @@ browser the session last worked in. `open_tab` and `select_tab` take `browser` t
 ### Chrome and Firefox
 
 Everything works in both, except what needs Chrome's debugger API, which Firefox doesn't have: `trusted` input,
-`handle_dialog` (use the `dialog` option instead), screenshots of elements larger than the window (Firefox gets the
+answering a dialog that is already open (use the `dialog` option or `set_dialog_rule`), screenshots of elements larger than the window (Firefox gets the
 visible part), and `evaluate` on pages whose Content Security Policy forbids `eval`. The Firefox build uses Manifest
 V2, because Firefox lets Manifest V3 extensions take screenshots only right after the user clicks their icon.
 

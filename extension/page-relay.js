@@ -74,9 +74,13 @@
 
   // The hooks in the page's world start switched off; the background says
   // whether this tab is one an agent works in, now and whenever that changes.
-  const setHooks = (enabled) => window.dispatchEvent(new CustomEvent("__choro_status", { detail: enabled ? "on" : "off" }));
-  send({ type: "hookState" }).then((r) => setHooks(!!r?.on));
+  // The tab's standing dialog rule (set_dialog_rule) comes along.
+  const setHooks = (enabled, rule) => {
+    window.dispatchEvent(new CustomEvent("__choro_rule", { detail: JSON.stringify(enabled && rule ? rule : null) }));
+    window.dispatchEvent(new CustomEvent("__choro_status", { detail: enabled ? "on" : "off" }));
+  };
+  send({ type: "hookState" }).then((r) => setHooks(!!r?.on, r?.rule));
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "hooks") setHooks(!!msg.on);
+    if (msg?.type === "hooks") setHooks(!!msg.on, msg.rule);
   });
 })();

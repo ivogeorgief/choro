@@ -5,7 +5,9 @@
 // opens and holds it for a moment, so Chrome's debugger can attach and take it
 // over; handle_dialog then answers it. Without the debugger (Firefox, or tabs
 // Chrome won't debug) a dialog can still be reported and, in Chrome, dismissed.
-// The `dialog` option on actions avoids all this by answering in the page.
+// The `dialog` option on actions avoids all this by answering in the page, and a
+// standing rule (set_dialog_rule) does the same for every dialog in a tab, also
+// in Firefox, where a dialog that is already open can't be answered at all.
 
 import { attachDebugger, cdp, detachIfIdle, setKeepAttached } from "./cdp.js";
 import { isAgentTab } from "./sessions.js";
@@ -69,6 +71,60 @@ if (HAS_DEBUGGER) {
 
 chrome.tabs.onRemoved.addListener((tabId) => dialogs.delete(tabId));
 
+// A dialog the tab no longer shows (it was reloaded away).
+export const forgetDialog = (tabId) => dialogs.delete(tabId);
+
+// --- standing rules ------------------------------------------------------------------
+// set_dialog_rule: every dialog in the tab is answered in the page, until the
+// agent clears the rule or the tab moves to another site. Kept in session
+// storage: the background may be suspended and restarted meanwhile.
+
+const rules = new Map(); // tabId -> { accept, promptText, origin }
+const rulesReady = chrome.storage.session
+  .get("dialogRules")
+  .then(({ dialogRules }) => {
+    for (const [id, rule] of Object.entries(dialogRules || {})) if (!rules.has(Number(id))) rules.set(Number(id), rule);
+  })
+  .catch(() => {});
+const saveRules = () => chrome.storage.session.set({ dialogRules: Object.fromEntries(rules) }).catch(() => {});
+
+// What the page hooks need of a tab's rule (null: none).
+export async function dialogRule(tabId) {
+  await rulesReady;
+  const rule = rules.get(tabId);
+  return rule ? { accept: rule.accept, promptText: rule.promptText ?? null } : null;
+}
+
+export async function setDialogRule(tabId, rule) {
+  await rulesReady;
+  if (rule) rules.set(tabId, rule);
+  else rules.delete(tabId);
+  await saveRules();
+}
+
+const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+export const ruleOrigin = originOf;
+
+chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url }) => {
+  if (frameId !== 0) return;
+  await rulesReady;
+  const rule = rules.get(tabId);
+  if (rule && originOf(url) !== rule.origin) {
+    rules.delete(tabId);
+    saveRules();
+  }
+});
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  await rulesReady;
+  if (rules.delete(tabId)) saveRules();
+});
+
 // Asks the debugger whether a dialog is open: enabling the Page domain makes
 // Chrome report a dialog that is already showing. The enable call itself may not
 // answer while the page is frozen, so listen for the report instead.
@@ -92,7 +148,11 @@ export function describeDialog(d) {
 function dialogError(d) {
   let how;
   if (d.intercepted) how = "Answer it with handle_dialog (accept: true or false) before doing anything else on this tab.";
-  else if (!HAS_DEBUGGER) how = "Firefox doesn't let Choro answer it; the user has to. (Next time, pass dialog to the action that opens it.)";
+  else if (!HAS_DEBUGGER) {
+    how =
+      "Firefox doesn't let Choro answer an open dialog: the user can, or handle_dialog with reload: true reloads the " +
+      "tab (losing unsaved changes). To have Choro answer this tab's dialogs from now on, use set_dialog_rule.";
+  }
   else how = "It opened before Choro could take it over, so Choro can only dismiss it (handle_dialog with accept: false).";
   return new Error(`The page is blocked by ${describeDialog(d)}. ${how}`);
 }
@@ -168,8 +228,9 @@ async function dismissBySwitchingTabs(tab) {
   return !(await stillBlocked(tab.id));
 }
 
-// handle_dialog.
-export async function answerDialog(tab, accept, promptText) {
+// handle_dialog. With canReload, a dialog Choro can't answer is reported as
+// needing the tab reloaded (the caller does that) instead of as an error.
+export async function answerDialog(tab, accept, promptText, { canReload = false } = {}) {
   let d = await findDialog(tab.id);
   // A frozen page with no dialog on record still has one (e.g. it opened before
   // Choro was listening); it can at least be dismissed.
@@ -188,11 +249,13 @@ export async function answerDialog(tab, accept, promptText) {
     dialogs.delete(tab.id);
     return { answered: true, text: `Dismissed ${describeDialog(d)} (by briefly switching tabs)` };
   }
+  if (canReload) return { answered: false, reload: true, text: describeDialog(d) };
   throw new Error(
     HAS_DEBUGGER
       ? `There is ${describeDialog(d)}, but it opened before Choro could take it over, so only the user can accept it. ` +
-          "Choro can dismiss it with accept: false."
-      : `There is ${describeDialog(d)}. Firefox doesn't let Choro answer it; the user has to. Next time, pass the ` +
-          "dialog option to the action that opens it."
+          "Choro can dismiss it with accept: false, or reload the tab with reload: true (losing unsaved changes)."
+      : `There is ${describeDialog(d)}. Firefox doesn't let Choro answer an open dialog; the user can, or ` +
+          "handle_dialog with reload: true reloads the tab (losing unsaved changes). To have Choro answer this tab's " +
+          "dialogs from now on, use set_dialog_rule."
   );
 }

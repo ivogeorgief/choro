@@ -20,7 +20,7 @@ import "./bg/compat.js"; // first: Firefox's promise-based API under the chrome 
 import { recordBlockedPopup, recordHandledDialog } from "./bg/activity.js";
 import { handleCommand } from "./bg/commands.js";
 import { connect, getStatus, initConnection, isConnected, reconnect, disconnect } from "./bg/connection.js";
-import { onDialogClosed, onDialogOpening } from "./bg/dialogs.js";
+import { dialogRule, onDialogClosed, onDialogOpening } from "./bg/dialogs.js";
 import { setPageHooks, setTabHooks } from "./bg/inpage.js";
 import { forgetTabLog, onPageReport, setNetworkLogging, startNetworkLog } from "./bg/network.js";
 import { isAgentTab, setSessions, watchOwners } from "./bg/sessions.js";
@@ -57,8 +57,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.tab) {
     const tabId = sender.tab.id;
     if (msg.type === "hookState") {
-      sendResponse({ on: isConnected() && isAgentTab(tabId) });
-      return;
+      const on = isConnected() && isAgentTab(tabId);
+      (on ? dialogRule(tabId) : Promise.resolve(null)).then((rule) => sendResponse({ on, rule }));
+      return true; // answers asynchronously
     }
     // Claims count only for tabs an agent works in.
     if (!isAgentTab(tabId)) return;

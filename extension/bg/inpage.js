@@ -7,7 +7,7 @@
 // agent works in (setTabHooks). Pages loaded while connected keep the (inactive)
 // wrappers until they reload.
 
-import { pageWork } from "./dialogs.js";
+import { dialogRule, pageWork } from "./dialogs.js";
 import { isScriptable } from "./util.js";
 
 // Refs of elements inside cross-origin frames carry the frame: "f12:e5".
@@ -94,7 +94,7 @@ export function setPageHooks(on) {
 // Pages that were open before the agent connected get the hooks on first use.
 // The relay's marker is the extension version (a page element with that id
 // can't fake it, and an older copy left by an update doesn't count).
-async function ensurePageHooks(tabId) {
+export async function ensurePageHooks(tabId) {
   if (!hooksWanted || hookedTabs.has(tabId)) return;
   const version = chrome.runtime.getManifest().version;
   let probe;
@@ -116,9 +116,11 @@ async function ensurePageHooks(tabId) {
   hookedTabs.add(tabId);
 }
 
-// Switches a tab's hooks on (an agent works in it) or off.
-export function setTabHooks(tabId, on) {
-  chrome.tabs.sendMessage(tabId, { type: "hooks", on }).catch(() => {});
+// Switches a tab's hooks on (an agent works in it) or off, and passes on the
+// tab's standing dialog rule.
+export async function setTabHooks(tabId, on) {
+  const rule = on ? await dialogRule(tabId) : null;
+  chrome.tabs.sendMessage(tabId, { type: "hooks", on, rule }).catch(() => {});
 }
 
 // A new document in any frame needs checking again.
