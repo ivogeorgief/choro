@@ -95,6 +95,11 @@
   </form>
   <label><input type="checkbox" id="leave-guard"> Ask before leaving</label>
   <button id="huge-btn">Build 30,000 elements</button>
+  <p>
+    <label>Attachments <input type="file" id="file-plain" multiple></label>
+    <span class="uploader"><input type="file" id="file-hidden" accept=".txt" hidden><button type="button" id="file-btn" onclick="this.previousElementSibling.click()">Choose a file…</button></span>
+    <div id="dropzone" style="display:inline-block;padding:8px;border:1px dashed #888">Drop files here</div>
+  </p>
   <div id="huge"></div>
 </section>
 
@@ -134,6 +139,13 @@
   for (const id of ['date', 'time', 'color', 'range', 'number']) on(id, 'change', (e) => rec(id, e.target.value));
   document.querySelectorAll('input[name=size]').forEach((r) => r.addEventListener('change', () => rec('radio', r.value)));
   on('multi', 'change', (e) => rec('multi', [...e.target.selectedOptions].map((o) => o.text)));
+  // Uploads record names, sizes and the text, read back the way pages read files.
+  const readFiles = async (files) => Promise.all([...files].map(async (f) => `${f.name}:${f.size}:${f.type}:${await f.text()}`));
+  on('file-plain', 'change', async (e) => rec('file_plain', await readFiles(e.target.files)));
+  on('file-hidden', 'change', async (e) => rec('file_hidden', await readFiles(e.target.files)));
+  const dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', (e) => e.preventDefault());
+  dz.addEventListener('drop', async (e) => { e.preventDefault(); rec('dropped', await readFiles(e.dataTransfer.files)); });
   on('readonly', 'input', (e) => rec('readonly', e.target.value));
   setInterval(() => { const r = document.getElementById('readonly').value; if (r !== 'locked') rec('readonly', r); }, 300);
   on('maxlen', 'input', (e) => rec('maxlen', e.target.value));

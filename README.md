@@ -50,6 +50,7 @@ the server the same one: `claude mcp add -e CHORO_PORT=9000 choro -- npx -y chor
 | `screenshot` | The visible area, the whole page (scrolled and stitched) or one element. |
 | `click`, `hover`, `type`, `press_key`, `drag` | Input on an element given by `ref`, CSS `selector` or `name` (its visible text or label). `click` also takes `offsetX`/`offsetY` (canvases). |
 | `fill_form`, `select_option`, `set_checked`, `submit_form` | Forms: text, date/time/color/range/number inputs, selects (also multiple), checkboxes, radios and switches, with validation errors reported. |
+| `upload_file` | Attach local files to a file input (also a hidden one behind an "Upload" button) or drop them on a drag-and-drop zone; no file dialog opens. Up to 32 MB per call. |
 | `scroll`, `wait_for` | Scroll the page, an element into view, or inside a container (feeds, virtual lists); wait for text or an element. |
 | `handle_dialog` | Answer an `alert`, `confirm` or `prompt` that blocks the page. |
 | `network_requests`, `network_request`, `wait_for_request` | The tab's requests with status and timing, one request's headers and bodies, or waiting for one (e.g. the POST a Save button sends). |

@@ -184,6 +184,27 @@
     return el;
   }
 
+  // The file input an element stands for: the input itself, a label's control,
+  // one inside it (drop zones often hold a hidden one), or, for a button or link,
+  // the one file input in the nearest enclosing element that has any (an "Upload"
+  // button next to a hidden input). null for a drop zone.
+  function fileInputFor(el) {
+    const isFile = (e) => e?.tagName === "INPUT" && e.type === "file";
+    if (isFile(el)) return el;
+    if (el.tagName === "LABEL" && isFile(el.control)) return el.control;
+    const control = /^(BUTTON|A|LABEL)$/.test(el.tagName) || /^(button|link)$/.test(el.getAttribute("role") || "");
+    for (let a = el, depth = 0; a && depth < (control ? 5 : 1); a = a.parentElement, depth++) {
+      const inputs = [...a.querySelectorAll('input[type="file"]')];
+      if (a.shadowRoot) inputs.push(...a.shadowRoot.querySelectorAll('input[type="file"]'));
+      if (inputs.length === 1) return inputs[0];
+      if (inputs.length > 1) {
+        throw new Error(`${shortDesc(el)} is near ${inputs.length} file inputs; target one of them (snapshot lists them as "file").`);
+      }
+      if (a.tagName === "FORM") break;
+    }
+    return null;
+  }
+
   // Focuses el, first focusing the frames that contain it.
   function focusDeep(el) {
     const frame = winOf(el).frameElement;
@@ -1251,6 +1272,71 @@
         if (!now) changed.push(shortDesc(el));
       }
       return changed;
+    },
+
+    // files: [{name, type, data (base64)}], read from disk by the server.
+    uploadFiles({ files, ...target }) {
+      const el = resolve(target);
+      const win = winOf(el);
+      const bytesOf = new Map();
+      const list = files.map((f) => {
+        const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
+        const file = new win.File([bytes], f.name, { type: f.type, lastModified: f.lastModified });
+        bytesOf.set(file, bytes.buffer);
+        return file;
+      });
+      const dt = new win.DataTransfer();
+      for (const f of list) dt.items.add(f);
+      const names = list.map((f) => f.name).join(", ");
+
+      const input = fileInputFor(el);
+      if (!input) {
+        // No file input: a drag-and-drop zone. Files are dropped on it as a person would.
+        assertClickable(el);
+        // Firefox keeps a content script's objects apart from the page's: the page
+        // would see an empty DataTransfer. There, the event is built from the page's own
+        // constructors (wrappedJSObject), with the bytes cloned in.
+        const page = win.wrappedJSObject;
+        let drop = dt;
+        let init = (type) => new win.DragEvent(type, { bubbles: true, cancelable: true, composed: true, dataTransfer: drop });
+        if (page) {
+          drop = new page.DataTransfer();
+          for (const f of list) {
+            const opts = cloneInto({ type: f.type, lastModified: f.lastModified }, page);
+            drop.items.add(new page.File(cloneInto([new Uint8Array(bytesOf.get(f))], page), f.name, opts));
+          }
+          init = (type) => {
+            const o = new page.Object();
+            Object.assign(o, { bubbles: true, cancelable: true, composed: true });
+            o.dataTransfer = drop;
+            return new page.DragEvent(type, o);
+          };
+        }
+        for (const type of ["dragenter", "dragover", "drop"]) el.dispatchEvent(init(type));
+        return `Dropped ${names} onto ${shortDesc(el)} (it has no file input; check that the page took them)`;
+      }
+      if (input.disabled) throw new Error(`${shortDesc(input)} is disabled.`);
+      if (list.length > 1 && !input.multiple) {
+        throw new Error(`${shortDesc(input)} takes one file, not ${list.length}.`);
+      }
+      input.files = dt.files;
+      input.dispatchEvent(new win.Event("input", { bubbles: true, composed: true }));
+      input.dispatchEvent(new win.Event("change", { bubbles: true }));
+      const notes = [];
+      const accept = (input.getAttribute("accept") || "").trim();
+      if (accept) {
+        const ok = (f) =>
+          accept.split(",").some((a) => {
+            a = a.trim().toLowerCase();
+            if (a.startsWith(".")) return f.name.toLowerCase().endsWith(a);
+            if (a.endsWith("/*")) return f.type.startsWith(a.slice(0, -1));
+            return f.type === a;
+          });
+        const off = list.filter((f) => !ok(f)).map((f) => f.name);
+        if (off.length) notes.push(`the input accepts ${accept}, which ${off.join(", ")} may not match`);
+      }
+      const via = input === el ? "" : ` (the file input of ${shortDesc(el)})`;
+      return `Attached ${names} to ${shortDesc(input)}${via}${notes.length ? `; note: ${notes.join("; ")}` : ""}`;
     },
 
     selectOption({ value, ...target }) {

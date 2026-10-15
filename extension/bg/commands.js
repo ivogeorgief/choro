@@ -170,6 +170,18 @@ const commands = {
     return runInPage(await getTab(tabId, ctx), "selectOption", args);
   },
 
+  // The server read the files from disk; they arrive as base64.
+  async upload_file({ tabId, files, ...target }, ctx) {
+    if (!Array.isArray(files) || !files.length || !files.every((f) => typeof f?.name === "string" && typeof f?.data === "string")) {
+      throw new Error("No files to upload.");
+    }
+    const tab = await getTab(tabId, ctx);
+    const since = Date.now();
+    const size = files.reduce((n, f) => n + f.data.length, 0);
+    const text = await runInPage(tab, "uploadFiles", { ...target, files }, 0, { timeoutMs: 15_000 + size / 50_000 });
+    return text + (await settleAfterAction(tab.id, tab.url, since));
+  },
+
   async set_checked({ tabId, ...args }, ctx) {
     return runInPage(await getTab(tabId, ctx), "setChecked", args);
   },

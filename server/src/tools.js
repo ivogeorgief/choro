@@ -1,5 +1,7 @@
 // The MCP tools. Each one is forwarded to the browser extension, which does the work.
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 
 const count = (what, max) => z.number().int().positive().max(max).optional().describe(what);
@@ -41,6 +43,45 @@ const trusted = z
   );
 const maxLength = (def) => count(`Truncate to this many characters (default ${def})`, 10_000_000);
 const timeoutMs = (def) => count(`Default ${def}, at most 120000`, 120_000);
+
+const MAX_UPLOAD_MB = 32;
+
+const MIME = {
+  ".txt": "text/plain", ".csv": "text/csv", ".html": "text/html", ".htm": "text/html", ".css": "text/css",
+  ".js": "text/javascript", ".json": "application/json", ".xml": "application/xml", ".md": "text/markdown",
+  ".pdf": "application/pdf", ".zip": "application/zip", ".gz": "application/gzip", ".tar": "application/x-tar",
+  ".xpi": "application/x-xpinstall", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".avif": "image/avif",
+  ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".mp4": "video/mp4", ".webm": "video/webm",
+  ".mov": "video/quicktime", ".doc": "application/msword", ".xls": "application/vnd.ms-excel",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+// Work done here, in the agent's own server, before a call goes to the browser.
+// upload_file: the files are read from this computer's disk (the extension can't read files).
+export const PREPARE = {
+  async upload_file({ paths, ...args }) {
+    const files = [];
+    let total = 0;
+    for (const p of paths) {
+      if (!path.isAbsolute(p)) throw new Error(`Give an absolute path, not "${p}".`);
+      const st = await fs.stat(p).catch(() => null);
+      if (!st) throw new Error(`No file at ${p}.`);
+      if (!st.isFile()) throw new Error(`${p} is not a regular file.`);
+      total += st.size;
+      if (total > MAX_UPLOAD_MB * 1024 * 1024) throw new Error(`The files come to more than ${MAX_UPLOAD_MB} MB, the most upload_file sends.`);
+      files.push({
+        name: path.basename(p),
+        type: MIME[path.extname(p).toLowerCase()] ?? "",
+        lastModified: Math.round(st.mtimeMs),
+        data: (await fs.readFile(p)).toString("base64"),
+      });
+    }
+    return { ...args, files };
+  },
+};
 
 // [name, description, input schema, call timeout (ms)]
 export const TOOLS = [
@@ -196,6 +237,21 @@ export const TOOLS = [
     },
   ],
   ["set_checked", "Check or uncheck a checkbox, radio or switch.", { tabId, ref, selector, name, checked: z.boolean() }],
+  [
+    "upload_file",
+    "Attach local files to a file input, as if chosen in the file dialog (which never opens). The target can be the " +
+      "<input type=file> (snapshot lists it as \"file\", even when hidden) or the button, label or area that stands " +
+      "for it; an area with no file input (a drag-and-drop zone) gets the files dropped onto it. At most " +
+      `${MAX_UPLOAD_MB} MB in all.`,
+    {
+      tabId,
+      ref,
+      selector,
+      name,
+      paths: z.array(z.string()).min(1).max(20).describe("Absolute paths of the files, on the computer running the agent"),
+    },
+    60_000,
+  ],
   [
     "submit_form",
     "Submit the form containing the given element (or the form itself), reporting fields that fail validation.",

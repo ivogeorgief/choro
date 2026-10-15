@@ -14,7 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { readFileSync } from "node:fs";
 import { createBridge } from "./src/bridge.js";
 import { ensureKey, keyFile } from "./src/key.js";
-import { TOOLS, toContent } from "./src/tools.js";
+import { PREPARE, TOOLS, toContent } from "./src/tools.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 const PORT = Number(process.env.CHORO_PORT || 8765);
@@ -66,7 +66,8 @@ async function runServer() {
   for (const [name, description, inputSchema, timeoutMs] of TOOLS) {
     server.registerTool(name, { description, inputSchema }, async (args) => {
       try {
-        return { content: toContent(name, await bridge.call(name, args, timeoutMs)) };
+        const params = PREPARE[name] ? await PREPARE[name](args) : args;
+        return { content: toContent(name, await bridge.call(name, params, timeoutMs)) };
       } catch (err) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }

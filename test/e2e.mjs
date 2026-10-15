@@ -16,6 +16,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -267,6 +268,33 @@ async function run(browser) {
       const s = await evaluate("window.__summary");
       if (s.FAIL.length) throw new Error(`failed: ${s.FAIL.join(", ")}`);
       return `${s.PASS.length} page checks passed`;
+    });
+    await check("upload_file: file input, hidden input behind a button, drop zone", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "choro-e2e-upload-"));
+      const a = path.join(dir, "notes.txt");
+      const b = path.join(dir, "data.json");
+      const bin = path.join(dir, "pixel.png");
+      fs.writeFileSync(a, "héllo upload");
+      fs.writeFileSync(b, '{"x":1}');
+      fs.writeFileSync(bin, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 255]));
+      try {
+        await text("upload_file", { name: "Attachments", paths: [a, b] });
+        await text("upload_file", { name: "Choose a file…", paths: [a] });
+        await text("upload_file", { selector: "#dropzone", paths: [bin] });
+        const t = await evaluate("window.__t");
+        const want = {
+          file_plain: ["notes.txt:13:text/plain:héllo upload", 'data.json:7:application/json:{"x":1}'],
+          file_hidden: ["notes.txt:13:text/plain:héllo upload"],
+        };
+        for (const [k, v] of Object.entries(want)) if (JSON.stringify(t[k]) !== JSON.stringify(v)) throw new Error(`${k}: ${JSON.stringify(t[k])}`);
+        if (!/^pixel\.png:8:image\/png:/.test(t.dropped?.[0] || "")) throw new Error(`dropped: ${JSON.stringify(t.dropped)}`);
+        const refused = await tool("upload_file", { selector: "#file-hidden", paths: [a, b] }).then(() => null, (e) => e.message);
+        if (!/takes one file/.test(refused || "")) throw new Error(`two files on a single-file input: ${refused}`);
+        const relative = await tool("upload_file", { selector: "#file-plain", paths: ["notes.txt"] }).then(() => null, (e) => e.message);
+        if (!/absolute path/.test(relative || "")) throw new Error(`relative path: ${relative}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     });
     await check("refuses what a person couldn't do", async () => {
       const errors = [];
