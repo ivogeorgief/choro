@@ -1,7 +1,8 @@
 // The link between agent sessions and the browser extension.
 //
-// The extension connects to one local port. The first Choro server to start owns
-// it (the hub); servers of later agent sessions connect to the hub as peers, and
+// The extension, in one or more browsers, connects to one local port. The first
+// Choro server to start owns it (the hub); servers of later agent sessions connect
+// to the hub as peers, and
 // their calls are forwarded, tagged with a session id the hub assigns, so the
 // extension can keep each session's tabs apart. When the hub's session ends, the
 // peers race to take the port over and the extension reconnects to the winner.
@@ -16,6 +17,7 @@
 // Web pages can't take part at all: browsers mark their connections with an
 // http(s) Origin, which the hub refuses.
 
+import http from "node:http";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
 import { ensureKey, readKey } from "./key.js";
@@ -31,6 +33,8 @@ const PEER_HEARTBEAT_MS = 15_000;
 const HEARTBEAT_MS = 20_000;
 const MAX_PAYLOAD = 64 * 1024 * 1024; // screenshots of long pages are big
 const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension):\/\//;
+const MAX_BROWSERS = 4;
+const ROUTE_TIMEOUT_MS = 5_000; // asking each browser whether it has a tab
 
 const log = (...args) => console.error("[choro]", ...args); // stdout is the MCP channel
 
@@ -63,7 +67,11 @@ export function createBridge({ port }) {
 
   // Hub state
   let wss = null;
-  let ext = null; // the authenticated extension socket
+  let httpHub = null;
+  // The authenticated extensions, one per browser (or browser profile), in the
+  // order they connected: socket -> { name, instance }.
+  const browsers = new Map();
+  const sessionBrowser = new Map(); // session id -> the socket its calls without a tab go to
   let pairingFailedAt = 0; // an extension tried to connect with no or a wrong key
   let extensionProtocol = null; // {protocol, at} of an extension turned away for its version
   const peers = new Map(); // peer socket -> session id
@@ -79,9 +87,15 @@ export function createBridge({ port }) {
 
   function startHub() {
     return new Promise((resolve) => {
+      // Plain HTTP requests get an empty answer: the extension checks with one
+      // whether a server is up before opening a WebSocket, because a failed
+      // WebSocket shows up as an error on the browser's extensions page.
+      const httpServer = http.createServer((req, res) => {
+        res.writeHead(204, { "Cache-Control": "no-store" });
+        res.end();
+      });
       const server = new WebSocketServer({
-        host: HOST,
-        port,
+        server: httpServer,
         maxPayload: MAX_PAYLOAD,
         // Browser pages always send their own http(s) Origin; only the extension
         // (its extension origin) and local processes (no Origin) get further.
@@ -90,18 +104,22 @@ export function createBridge({ port }) {
       const onStartError = (err) => {
         if (err.code !== "EADDRINUSE") log("websocket server error:", err.message);
         server.close();
+        httpServer.close();
         resolve(false);
       };
+      // The WebSocket server passes on the HTTP server's errors and "listening".
       server.once("error", onStartError);
       server.once("listening", () => {
         server.off("error", onStartError);
         server.on("error", (err) => log("websocket server error:", err.message));
         server.on("connection", authenticate);
         wss = server;
+        httpHub = httpServer;
         role = "hub";
         log(`hub: waiting for the browser extension on ws://${HOST}:${port}`);
         resolve(true);
       });
+      httpServer.listen(port, HOST);
     });
   }
 
@@ -152,19 +170,24 @@ export function createBridge({ port }) {
   }
 
   function acceptExtension(ws, msg, welcome) {
-    // One browser at a time: a second one waits until the first leaves, instead
-    // of the two taking the connection from each other over and over.
-    if (ext && ext.readyState === WebSocket.OPEN) {
-      ws.close(4002, "another browser is connected");
+    // The same extension reconnecting (its old socket not closed yet) replaces itself.
+    const instance = typeof msg.instance === "string" ? msg.instance.slice(0, 64) : null;
+    for (const [other, b] of browsers) if (instance && b.instance === instance) other.terminate();
+    if (openBrowsers().length >= MAX_BROWSERS) {
+      ws.close(4002, "too many browsers are connected");
       return;
     }
     send(ws, welcome);
-    ext = ws;
+    const base = typeof msg.browser === "string" && /^[\w .-]{1,32}$/.test(msg.browser) ? msg.browser : "Browser";
+    const names = new Set(openBrowsers().map((o) => browsers.get(o).name));
+    let name = base;
+    for (let i = 2; names.has(name); i++) name = `${base} ${i}`;
+    browsers.set(ws, { name, instance });
     pairingFailedAt = 0;
-    log(`extension connected (version ${msg.version ?? "?"})`);
+    log(`${name} connected (extension version ${msg.version ?? "?"}; ${browsers.size} browser${browsers.size > 1 ? "s" : ""})`);
     sendSessions();
 
-    // A browser that vanished without closing the socket must not hold the slot.
+    // A browser that vanished without closing the socket must not hold its place.
     let alive = true;
     ws.on("pong", () => (alive = true));
     const heartbeat = setInterval(() => {
@@ -186,15 +209,13 @@ export function createBridge({ port }) {
 
     ws.on("close", () => {
       clearInterval(heartbeat);
-      if (ext === ws) {
-        ext = null;
-        log("extension disconnected");
-      }
+      if (browsers.delete(ws)) log(`${name} disconnected`);
+      for (const [id, b] of sessionBrowser) if (b === ws) sessionBrowser.delete(id);
       for (const [id, call] of inFlight) {
         if (call.socket !== ws) continue;
         inFlight.delete(id);
         clearTimeout(call.timer);
-        call.done(new Error("The browser extension disconnected while handling the request."));
+        call.done(new Error(`${name} (the browser extension) disconnected while handling the request.`));
       }
     });
   }
@@ -213,12 +234,13 @@ export function createBridge({ port }) {
       const m = parse(raw);
       if (m?.type !== "call" || typeof m.method !== "string") return;
       const params = m.params && typeof m.params === "object" ? m.params : {};
-      sendToExtension(m.method, { ...params, _session: id }, Number(m.timeoutMs) || DEFAULT_TIMEOUT_MS, (err, result) =>
+      routeCall(m.method, { ...params, _session: id }, Number(m.timeoutMs) || DEFAULT_TIMEOUT_MS, (err, result) =>
         send(ws, { type: "result", id: m.id, result, error: err?.message })
       );
     });
     ws.on("close", () => {
       peers.delete(ws);
+      sessionBrowser.delete(id);
       log(`session ${id.slice(0, 8)} left (${peers.size + 1} sessions)`);
       sendSessions();
     });
@@ -226,7 +248,7 @@ export function createBridge({ port }) {
 
   // Tells the extension which sessions exist, so tabs held by sessions that ended become free.
   function sendSessions() {
-    if (ext) send(ext, { type: "sessions", ids: [session, ...peers.values()] });
+    for (const b of browsers.keys()) send(b, { type: "sessions", ids: [session, ...peers.values()] });
   }
 
   function notConnected() {
@@ -252,15 +274,74 @@ export function createBridge({ port }) {
     );
   }
 
-  function sendToExtension(method, params, timeoutMs, done) {
-    if (ext?.readyState !== WebSocket.OPEN) return done(notConnected());
+  const openBrowsers = () => [...browsers.keys()].filter((b) => b.readyState === WebSocket.OPEN);
+
+  function sendTo(ws, method, params, timeoutMs, done) {
     const id = nextExtId++;
     const timer = setTimeout(() => {
       inFlight.delete(id);
       done(new Error(`Timed out after ${timeoutMs}ms waiting for the browser to run "${method}".`));
     }, timeoutMs);
-    inFlight.set(id, { done, timer, socket: ext });
-    ext.send(JSON.stringify({ id, method, params }));
+    inFlight.set(id, { done, timer, socket: ws });
+    ws.send(JSON.stringify({ id, method, params }));
+  }
+
+  const ask = (ws, method, params, timeoutMs) =>
+    new Promise((resolve, reject) => sendTo(ws, method, params, timeoutMs, (err, result) => (err ? reject(err) : resolve(result))));
+
+  // With several browsers connected, each call goes to one of them: the one named
+  // by `browser`, else the one holding `tabId`, else the session's browser (the one
+  // it last worked in, at first the one connected longest). list_tabs asks them all.
+  function routeCall(method, { browser: wanted, ...params }, timeoutMs, done) {
+    const open = openBrowsers();
+    if (!open.length) return done(notConnected());
+    const nameOf = (ws) => browsers.get(ws).name;
+    const sid = params._session;
+    let target = null;
+    if (typeof wanted === "string" && wanted) {
+      target = open.find((ws) => nameOf(ws).toLowerCase() === wanted.toLowerCase().trim());
+      if (!target) return done(new Error(`No browser named "${wanted}" is connected. Connected: ${open.map(nameOf).join(", ")}.`));
+    }
+    const mine = () => (open.includes(sessionBrowser.get(sid)) ? sessionBrowser.get(sid) : open[0]);
+    const go = (ws) => {
+      if (target || params.tabId != null || method === "open_tab") sessionBrowser.set(sid, ws);
+      sendTo(ws, method, params, timeoutMs, done);
+    };
+    if (target || open.length === 1) return go(target ?? open[0]);
+
+    if (method === "list_tabs") {
+      const current = mine();
+      return Promise.all(
+        open.map((ws) =>
+          ask(ws, "list_tabs", params, ROUTE_TIMEOUT_MS).then(
+            (tabs) => (Array.isArray(tabs) ? tabs : []).map((t) => ({ browser: nameOf(ws), ...t, current: ws === current && t.current })),
+            (err) => [{ browser: nameOf(ws), error: err.message }]
+          )
+        )
+      ).then((lists) => done(null, lists.flat()), done);
+    }
+    if (params.tabId == null) return go(mine());
+
+    // Tab ids are only unique within one browser: find the ones that have it.
+    Promise.all(
+      open.map((ws) =>
+        ask(ws, "list_tabs", { _session: sid }, ROUTE_TIMEOUT_MS).then(
+          (tabs) => Array.isArray(tabs) && tabs.some((t) => t.id === params.tabId),
+          () => false
+        )
+      )
+    ).then((has) => {
+      const holders = open.filter((_, i) => has[i]);
+      if (holders.length > 1 && !holders.includes(sessionBrowser.get(sid))) {
+        return done(
+          new Error(
+            `Tab ${params.tabId} exists in ${holders.map(nameOf).join(" and ")}. Pass browser to say which one ` +
+              "(select_tab with browser makes it this session's browser)."
+          )
+        );
+      }
+      go(holders.length > 1 ? sessionBrowser.get(sid) : (holders[0] ?? mine()));
+    }, done);
   }
 
   // --- peer ------------------------------------------------------------------------
@@ -384,7 +465,7 @@ export function createBridge({ port }) {
   function call(method, params = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
     if (role === "hub") {
       return new Promise((resolve, reject) =>
-        sendToExtension(method, { ...params, _session: session }, timeoutMs, (err, result) => (err ? reject(err) : resolve(result)))
+        routeCall(method, { ...params, _session: session }, timeoutMs, (err, result) => (err ? reject(err) : resolve(result)))
       );
     }
     if (role === "peer" && hub?.readyState === WebSocket.OPEN) {
@@ -414,6 +495,7 @@ export function createBridge({ port }) {
   function close() {
     closing = true;
     wss?.close();
+    httpHub?.close();
     hub?.close();
   }
 

@@ -4,7 +4,7 @@
 // launches Chromium and/or Firefox with a temporary profile and the extension,
 // and drives the test pages (test/*.html) through the MCP tools.
 //
-//   node test/e2e.mjs                 both browsers
+//   node test/e2e.mjs                 both browsers, one after the other and then at once
 //   node test/e2e.mjs chromium        or: firefox
 //   node test/e2e.mjs --headed        watch it (default: headless)
 //
@@ -58,6 +58,66 @@ function which_(cmd) {
   }
 }
 
+// --- launching browsers ---------------------------------------------------------------
+
+// Starts the browser with a fresh profile in `dir` and the extension built there; null if it isn't installed.
+function launch(browser, dir, start) {
+  if (browser === "chromium") {
+    const bin = process.env.CHROMIUM || which_("chromium") || which_("chromium-browser");
+    if (!bin) return null;
+    return spawn(
+      bin,
+      [
+        `--user-data-dir=${path.join(dir, "profile")}`,
+        `--load-extension=${path.join(dir, "ext/chrome")}`,
+        "--disable-features=DisableLoadExtensionCommandLineSwitch",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--window-size=1280,900",
+        ...(process.env.CI ? ["--no-sandbox"] : []), // CI runners (Ubuntu 24.04) restrict the sandbox's user namespaces
+        ...(headed ? [] : ["--headless=new"]),
+        start,
+      ],
+      { stdio: "ignore" }
+    );
+  } else {
+    const bin = process.env.FIREFOX || which_("firefox");
+    if (!bin) return null;
+    return spawn(
+      "npx",
+      [
+        "-y",
+        "web-ext@8",
+        "run",
+        "--source-dir",
+        path.join(dir, "ext/firefox"),
+        "--firefox",
+        bin,
+        "--firefox-profile",
+        path.join(dir, "profile"),
+        "--profile-create-if-missing",
+        "--no-reload",
+        "--no-input",
+        "--start-url",
+        start,
+        ...(headed ? [] : ["--arg=-headless"]),
+      ],
+      { stdio: "ignore", detached: true }
+    );
+  }
+}
+
+async function stop(browser, proc) {
+  if (browser === "firefox") {
+    try {
+      process.kill(-proc.pid, "SIGTERM"); // web-ext and the Firefox it started
+    } catch {}
+  } else {
+    proc.kill("SIGTERM");
+  }
+  await sleep(1000);
+}
+
 // --- one browser run -------------------------------------------------------------------
 
 async function run(browser) {
@@ -107,51 +167,9 @@ async function run(browser) {
   const { transport, tool, text, evaluate } = sessionA;
   let sessionB = null;
 
-  let proc;
   const start = `${SITE}/torture.html?nologin`;
-  if (browser === "chromium") {
-    const bin = process.env.CHROMIUM || which_("chromium") || which_("chromium-browser");
-    if (!bin) return [`SKIP  chromium: not installed`];
-    proc = spawn(
-      bin,
-      [
-        `--user-data-dir=${path.join(dir, "profile")}`,
-        `--load-extension=${path.join(dir, "ext/chrome")}`,
-        "--disable-features=DisableLoadExtensionCommandLineSwitch",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--window-size=1280,900",
-        ...(process.env.CI ? ["--no-sandbox"] : []), // CI runners (Ubuntu 24.04) restrict the sandbox's user namespaces
-        ...(headed ? [] : ["--headless=new"]),
-        start,
-      ],
-      { stdio: "ignore" }
-    );
-  } else {
-    const bin = process.env.FIREFOX || which_("firefox");
-    if (!bin) return [`SKIP  firefox: not installed`];
-    proc = spawn(
-      "npx",
-      [
-        "-y",
-        "web-ext@8",
-        "run",
-        "--source-dir",
-        path.join(dir, "ext/firefox"),
-        "--firefox",
-        bin,
-        "--firefox-profile",
-        path.join(dir, "profile"),
-        "--profile-create-if-missing",
-        "--no-reload",
-        "--no-input",
-        "--start-url",
-        start,
-        ...(headed ? [] : ["--arg=-headless"]),
-      ],
-      { stdio: "ignore", detached: true }
-    );
-  }
+  const proc = launch(browser, dir, start);
+  if (!proc) return [`SKIP  ${browser}: not installed`];
 
   try {
     await check(`${browser}: extension pairs and connects`, async () => {
@@ -413,16 +431,72 @@ async function run(browser) {
   } finally {
     await transport.close().catch(() => {});
     await sessionB?.transport.close().catch(() => {});
-    if (browser === "firefox") {
-      try {
-        process.kill(-proc.pid, "SIGTERM"); // web-ext and the Firefox it started
-      } catch {}
-    } else {
-      proc.kill("SIGTERM");
-    }
-    await sleep(1000);
+    await stop(browser, proc);
   }
   if (results.some((r) => r.startsWith("FAIL"))) results.push(`--- server log (${browser}) ---\n${serverLog.join("").slice(-3000)}`);
+  return results;
+}
+
+// --- both browsers on one server ---------------------------------------------------------
+
+async function runTogether() {
+  const results = [];
+  const port = await freePort();
+  const key = randomBytes(32).toString("hex");
+  const top = path.join(WORK, "together");
+  fs.rmSync(top, { recursive: true, force: true });
+  fs.mkdirSync(path.join(top, "config"), { recursive: true });
+  fs.writeFileSync(path.join(top, "config", "pairing-key"), key + "\n", { mode: 0o600 });
+  const procs = {};
+  for (const b of ["chromium", "firefox"]) {
+    const dir = path.join(top, b);
+    execFileSync(process.execPath, [path.join(ROOT, "tools/build.mjs"), "--port", String(port), "--test-key", key, "--out", path.join(dir, "ext")], { stdio: "ignore" });
+    procs[b] = launch(b, dir, `${SITE}/torture2.html?${b}`);
+    if (!procs[b]) {
+      for (const [n, p] of Object.entries(procs)) if (p) await stop(n, p);
+      return [`SKIP  both browsers at once: ${b} not installed`];
+    }
+  }
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.join(ROOT, "server/index.js")],
+    env: { ...process.env, CHORO_PORT: String(port), CHORO_CONFIG_DIR: path.join(top, "config") },
+    stderr: "ignore",
+  });
+  const client = new Client({ name: "choro-e2e-together", version: "0" });
+  await client.connect(transport);
+  const text = async (name, a = {}) => {
+    const res = await client.callTool({ name, arguments: a }, undefined, { timeout: 130_000 });
+    const t = res.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+    if (res.isError) throw new Error(t);
+    return t;
+  };
+  try {
+    let tabs = [];
+    for (let i = 0; i < 60; i++) {
+      tabs = await text("list_tabs").then(JSON.parse, () => []);
+      if (["Chrome", "Firefox"].every((b) => tabs.some((t) => t.browser === b && !t.error))) break;
+      await sleep(1000);
+    }
+    const names = [...new Set(tabs.map((t) => t.browser))].sort().join(", ");
+    if (names !== "Chrome, Firefox") throw new Error(`list_tabs shows tabs of: ${names || "no browser"}`);
+    results.push("PASS  both browsers at once: list_tabs shows the tabs of both");
+
+    const opened = {};
+    for (const b of ["Chrome", "Firefox"]) opened[b] = JSON.parse(await text("open_tab", { url: `${SITE}/torture.html?nologin&in=${b}`, browser: b })).opened.id;
+    for (const b of ["Chrome", "Firefox", "Chrome"]) {
+      await text("select_tab", { tabId: opened[b], browser: b });
+      const ua = await text("evaluate", { expression: "navigator.userAgent", tabId: opened[b] });
+      const url = await text("evaluate", { expression: "location.search" });
+      if (!ua.includes(b === "Firefox" ? "Firefox/" : "Chrome/") || !url.includes(`in=${b}`)) throw new Error(`${b}'s tab ran in ${ua} at ${url}`);
+    }
+    results.push("PASS  both browsers at once: each tab is driven in its own browser");
+  } catch (err) {
+    results.push(`FAIL  both browsers at once: ${String(err.message).split("\n")[0].slice(0, 300)}`);
+  } finally {
+    await transport.close().catch(() => {});
+    for (const [n, p] of Object.entries(procs)) await stop(n, p);
+  }
   return results;
 }
 
@@ -437,6 +511,12 @@ const all = [];
 for (const b of which) {
   console.log(`\n== ${b}`);
   const r = await run(b);
+  console.log(r.join("\n"));
+  all.push(...r);
+}
+if (which.includes("chromium") && which.includes("firefox")) {
+  console.log("\n== both at once");
+  const r = await runTogether();
   console.log(r.join("\n"));
   all.push(...r);
 }

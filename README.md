@@ -73,6 +73,11 @@ text, and `handle_dialog` answers it (in Chrome; in Firefox only the user can).
 owns the port and the others connect through it; when it exits, another one takes over. Each session has its own
 current tab and can't touch tabs another session is working in. `list_tabs` shows which are whose.
 
+**Several browsers at once.** Chrome and Firefox (or several browser profiles, up to four) can be connected at the
+same time, each with Choro installed and paired with the same key. `list_tabs` then shows every browser's tabs,
+each marked with its browser. A call with a `tabId` goes to the browser that has that tab. Other calls go to the
+browser the session last worked in. `open_tab` and `select_tab` take `browser` to choose one.
+
 ### Chrome and Firefox
 
 Everything works in both, except what needs Chrome's debugger API, which Firefox doesn't have: `trusted` input,

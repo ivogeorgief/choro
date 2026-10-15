@@ -9,12 +9,13 @@
 // server on another port, and the key itself never crosses the wire. Until both
 // check out, nothing the socket says is acted on.
 
-import { sleep } from "./util.js";
+import { browserName, sleep } from "./util.js";
 
 const DEFAULT_PORT = 8765;
 const PING_INTERVAL_MS = 20_000; // also keeps the background alive while connected
-// While no server runs, retries back off from 2 s to 30 s: every failed attempt
-// shows up as an error on the browser's extensions page, which Choro can't suppress.
+// While no server runs, retries back off from 2 s to 30 s. Each one first asks
+// over plain HTTP whether anything listens: a failed WebSocket shows up as an
+// error on the browser's extensions page, which Choro can't suppress.
 const RECONNECT_DELAY_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
 const PROTOCOL = 2;
@@ -44,6 +45,15 @@ async function getPort() {
 async function isEnabled() {
   const { enabled } = await chrome.storage.local.get("enabled");
   return enabled !== false;
+}
+
+// Identifies this browser to the server, so a reconnect replaces its old connection.
+async function getInstance() {
+  const { instance } = await chrome.storage.local.get("instance");
+  if (typeof instance === "string") return instance;
+  const fresh = randomHex(16);
+  await chrome.storage.local.set({ instance: fresh });
+  return fresh;
 }
 
 async function getKey() {
@@ -108,6 +118,16 @@ const resetRetry = () => chrome.storage.session.set({ retry: { delay: RECONNECT_
 
 // --- connecting ----------------------------------------------------------------------
 
+// Any answer counts (servers before 0.2.1 answer plain HTTP with 426).
+async function serverAnswers(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, { cache: "no-store", credentials: "omit", signal: AbortSignal.timeout(3_000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Several triggers (startup, install, alarm, wake-ups, popup) may call this at once.
 export function connect() {
   connectPromise ??= openSocket().finally(() => (connectPromise = null));
@@ -128,6 +148,12 @@ async function openSocket() {
 
   const port = await getPort();
   if (status !== "unpaired") setStatus("connecting");
+  if (!(await serverAnswers(port))) {
+    setStatus("disconnected", `No Choro server on port ${port}.`);
+    scheduleReconnect();
+    return;
+  }
+  if (!(await isEnabled())) return; // paused in the popup meanwhile
   let socket;
   try {
     socket = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -178,7 +204,16 @@ async function openSocket() {
         myNonce = randomHex();
         const proof = await hmac(key, `extension:${serverNonce}:${myNonce}:${port}`);
         socket.send(
-          JSON.stringify({ type: "auth", role: "extension", proof, nonce: myNonce, protocol: PROTOCOL, version: chrome.runtime.getManifest().version })
+          JSON.stringify({
+            type: "auth",
+            role: "extension",
+            proof,
+            nonce: myNonce,
+            protocol: PROTOCOL,
+            version: chrome.runtime.getManifest().version,
+            browser: browserName(),
+            instance: await getInstance(),
+          })
         );
       } else if (msg.type === "welcome" && key && myNonce) {
         if (!sameHex(msg.proof, await hmac(key, `server:${serverNonce}:${myNonce}:${port}`))) {
@@ -231,7 +266,7 @@ async function openSocket() {
     } else if (closeReason === "badserver") {
       setStatus("unpaired", `The program on port ${port} doesn't know the pairing key, so Choro didn't trust it.`);
     } else if (event.code === 4002) {
-      setStatus("disconnected", "Another browser is connected to this Choro server; Choro will connect when it leaves.");
+      setStatus("disconnected", "Too many browsers are connected to this Choro server; Choro will connect when one leaves.");
     } else {
       setStatus("disconnected", authed ? "" : `No Choro server on port ${port}.`);
     }

@@ -29,7 +29,8 @@ provider's terms. Choro has no part in that, and which agent you connect is your
 
 ## What is stored in the browser
 
-The pairing key, the port and the on/off setting (extension local storage), and which tabs each agent session uses
+The pairing key, the port, the on/off setting and a random id that tells the server which browser is which
+(extension local storage), and which tabs each agent session uses
 (session storage, cleared when the browser closes). Nothing is stored anywhere else.
 
 ## Contact

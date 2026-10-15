@@ -63,14 +63,15 @@ async function eventually(fn, what, ms = 8000) {
   throw new Error(`${what}: ${last?.message}`);
 }
 
-async function call(session, name = "list_tabs") {
-  const res = await session.client.callTool({ name, arguments: {} });
+async function call(session, name = "list_tabs", args = {}) {
+  const res = await session.client.callTool({ name, arguments: args });
   if (res.isError) throw new Error(res.content[0].text);
   return JSON.parse(res.content[0].text);
 }
 
 // A fake extension: pairs with `withKey`, answers every call with what it got.
-function fakeExtension({ withKey = key, origin = "chrome-extension://fake", reconnect = true, protocol = 2 } = {}) {
+// With `tabs`, it answers list_tabs with tabs of those ids.
+function fakeExtension({ withKey = key, origin = "chrome-extension://fake", reconnect = true, protocol = 2, browser, instance, tabs } = {}) {
   const ext = { seen: [], up: false, closes: [], stop: false };
   const open = () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, origin ? { origin } : {});
@@ -80,7 +81,7 @@ function fakeExtension({ withKey = key, origin = "chrome-extension://fake", reco
       if (msg.type === "challenge") {
         ext.challenge = msg.nonce;
         ws.send(
-          JSON.stringify({ type: "auth", role: "extension", proof: withKey ? hmac(withKey, `extension:${msg.nonce}:${myNonce}:${port}`) : null, nonce: myNonce, protocol })
+          JSON.stringify({ type: "auth", role: "extension", proof: withKey ? hmac(withKey, `extension:${msg.nonce}:${myNonce}:${port}`) : null, nonce: myNonce, protocol, browser, instance })
         );
       } else if (msg.type === "welcome") {
         ext.serverProved = msg.proof === hmac(key, `server:${ext.challenge}:${myNonce}:${port}`);
@@ -90,7 +91,11 @@ function fakeExtension({ withKey = key, origin = "chrome-extension://fake", reco
         ext.sessions = msg.ids;
       } else if (msg.id != null) {
         ext.seen.push(msg);
-        ws.send(JSON.stringify({ id: msg.id, result: { method: msg.method, session: msg.params._session } }));
+        const result =
+          msg.method === "list_tabs" && tabs
+            ? tabs.map((id) => ({ id, current: false }))
+            : { method: msg.method, session: msg.params._session, browser, params: msg.params };
+        ws.send(JSON.stringify({ id: msg.id, result }));
       }
     });
     ws.on("close", (code) => {
@@ -191,6 +196,12 @@ describe("pairing and sharing", () => {
     assert.ok(r.rejectedHandshake);
   });
 
+  test("plain HTTP gets an empty answer (the extension's check before connecting)", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(res.status, 204);
+    assert.equal(await res.text(), "");
+  });
+
   test("garbage and null messages don't crash the hub", async () => {
     for (const sendRaw of ["null", "42", "not json", "{}", '{"type":"auth"}']) {
       await rawAttempt({ origin: undefined, sendRaw, auth: () => ({}) });
@@ -214,10 +225,46 @@ describe("pairing and sharing", () => {
     assert.equal(r.code, 4001);
   });
 
-  test("a second browser waits instead of taking over", async () => {
-    const second = fakeExtension({ origin: "chrome-extension://second", reconnect: false });
-    await eventually(async () => assert.deepEqual(second.closes, [4002]), "second browser refused");
-    assert.ok(ext.up);
+  test("several browsers connect at once, and calls go to the right one", async () => {
+    const chrome = fakeExtension({ origin: "chrome-extension://c", reconnect: false, browser: "Chrome", tabs: [1, 2] });
+    const firefox = fakeExtension({ origin: "moz-extension://f", reconnect: false, browser: "Firefox", tabs: [2, 3] });
+    await eventually(async () => assert.ok(chrome.up && firefox.up), "both connect");
+    try {
+      const tabs = await call(a);
+      const where = (id) => tabs.filter((t) => t.id === id).map((t) => t.browser);
+      assert.deepEqual(where(1), ["Chrome"]);
+      assert.deepEqual(where(3), ["Firefox"]);
+      assert.deepEqual(where(2).sort(), ["Chrome", "Firefox"]);
+      assert.deepEqual((await call(a, "list_tabs", { browser: "firefox" })).map((t) => t.id), [2, 3]);
+
+      assert.equal((await call(a, "snapshot", { tabId: 3 })).browser, "Firefox", "the browser holding the tab");
+      assert.equal((await call(a, "snapshot", { tabId: 1 })).browser, "Chrome");
+      assert.equal((await call(a, "snapshot", { tabId: 2 })).browser, "Chrome", "a shared id goes to the session's browser");
+      assert.equal((await call(a, "select_tab", { tabId: 2, browser: "Firefox" })).browser, "Firefox");
+      assert.equal((await call(a, "snapshot", { tabId: 2 })).browser, "Firefox", "select_tab switched the session's browser");
+      assert.equal((await call(a, "snapshot")).browser, "Firefox", "calls without a tab go to the session's browser");
+      assert.equal((await call(a, "snapshot")).params.browser, undefined, "the browser parameter stays in the server");
+      const ofB = await call(b, "snapshot");
+      assert.equal(ofB.session, sessionB);
+      await assert.rejects(call(a, "open_tab", { url: "x", browser: "Safari" }), /No browser named "Safari"/);
+    } finally {
+      chrome.close();
+      firefox.close();
+    }
+    await eventually(async () => assert.equal((await call(a)).method, "list_tabs"), "back to one browser");
+  });
+
+  test("a browser that reconnects replaces its old connection", async () => {
+    const one = fakeExtension({ origin: "chrome-extension://r", reconnect: false, browser: "Chrome", instance: "same", tabs: [7] });
+    await eventually(async () => assert.ok(one.up), "first connects");
+    const two = fakeExtension({ origin: "chrome-extension://r", reconnect: false, browser: "Chrome", instance: "same", tabs: [7] });
+    try {
+      await eventually(async () => assert.ok(two.up && !one.up), "second replaces the first");
+      const tabs = await call(a);
+      assert.deepEqual(tabs.filter((t) => t.id === 7).map((t) => t.browser), ["Chrome"]);
+    } finally {
+      two.close();
+    }
   });
 
   test("when the hub's session ends, the peer takes over (keeping its session id) and the extension follows", async () => {

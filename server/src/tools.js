@@ -14,6 +14,10 @@ const tabId = z
     "Target tab id (from list_tabs). Defaults to the tab this session last worked with, or the active tab. Tabs " +
       "another agent session is using are off limits."
   );
+const browser = z
+  .string()
+  .optional()
+  .describe('Which browser, by the name list_tabs shows (e.g. "Chrome", "Firefox"), when several are connected');
 const ref = z
   .string()
   .optional()
@@ -88,8 +92,9 @@ export const TOOLS = [
   [
     "list_tabs",
     "List all open browser tabs with their ids, titles and URLs, which one is active, and which are used by this " +
-      "session or another agent session sharing the browser.",
-    {},
+      "session or another agent session sharing the browser. With several browsers connected, each tab says which " +
+      "browser it is in.",
+    { browser: browser.describe("Only this browser's tabs") },
   ],
   [
     "open_tab",
@@ -97,12 +102,15 @@ export const TOOLS = [
     {
       url: z.string().describe('URL to open; "localhost:3000" and "example.com" work too'),
       active: z.boolean().optional().describe("Make it the visible tab (default true)"),
+      browser: browser.describe(
+        "Open it in this browser, when several are connected (default: the one this session last worked in). It becomes this session's browser."
+      ),
     },
   ],
   [
     "select_tab",
     "Make a tab this session's default target and the visible tab in its window (the window itself is not raised).",
-    { tabId: z.number().int() },
+    { tabId: z.number().int(), browser: browser.describe("The tab's browser, if the same tab id exists in several") },
   ],
   ["close_tab", "Close a tab (not one another agent session is using).", { tabId: z.number().int() }],
   ["navigate", "Navigate a tab to a URL and wait for the page to load.", { url: z.string(), tabId }],

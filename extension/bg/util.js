@@ -29,6 +29,16 @@ const STORE = IS_FIREFOX
   ? /^https:\/\/addons\.mozilla\.org\//
   : /^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/;
 
+// The name agents see when several browsers are connected.
+export function browserName() {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  if (IS_FIREFOX) return "Firefox";
+  if (/Edg\//.test(ua)) return "Edge";
+  if (/OPR\//.test(ua)) return "Opera";
+  if (navigator.brave) return "Brave";
+  return "Chrome";
+}
+
 export function isScriptable(url = "") {
   return !/^(chrome|edge|about|devtools|chrome-extension|moz-extension|view-source|resource):/.test(url) && !STORE.test(url);
 }
