@@ -32,6 +32,8 @@ const which = browsers.length ? browsers : ["chromium", "firefox"];
 const SITE = "http://127.0.0.1:8701";
 const WORK = path.join(ROOT, "dist-test"); // inside the repo: snap-packaged browsers can't read /tmp
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Seconds to wait for the extension to connect: a first Firefox run also downloads web-ext.
+const CONNECT_S = 120;
 
 const freePort = () =>
   new Promise((resolve) => {
@@ -173,12 +175,12 @@ async function run(browser) {
 
   try {
     await check(`${browser}: extension pairs and connects`, async () => {
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < CONNECT_S; i++) {
         try {
           await text("list_tabs");
           return;
         } catch (err) {
-          if (i === 59) throw err;
+          if (i === CONNECT_S - 1) throw err;
           await sleep(1000);
         }
       }
@@ -473,7 +475,7 @@ async function runTogether() {
   };
   try {
     let tabs = [];
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < CONNECT_S; i++) {
       tabs = await text("list_tabs").then(JSON.parse, () => []);
       if (["Chrome", "Firefox"].every((b) => tabs.some((t) => t.browser === b && !t.error))) break;
       await sleep(1000);
