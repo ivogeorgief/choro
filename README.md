@@ -22,7 +22,7 @@ You need Node.js 20 or newer, and Chrome (or another Chromium browser) 116+ or F
    - Chrome: download `choro-chrome-<version>.zip` from the [releases](../../releases) and unzip it (or build it,
      see [Development](#development)). Open `chrome://extensions`, turn on *Developer mode*, click *Load unpacked*
      and pick the unzipped folder.
-   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro/) or the
+   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/) or the
      `choro-firefox-<version>.xpi` (signed by Mozilla) from the [releases](../../releases). For development, build it
      and load `dist/firefox/manifest.json` from `about:debugging` → *This Firefox* → *Load Temporary Add-on*.
 2. **Add the server to your agent.** For Claude Code:
