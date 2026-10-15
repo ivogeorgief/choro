@@ -23,11 +23,14 @@ export function normalizeUrl(url) {
 }
 
 // Pages extensions may not script (browser UI, other extensions, the stores).
+// Each browser keeps extensions off its own add-on store (and only its own).
+const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent);
+const STORE = IS_FIREFOX
+  ? /^https:\/\/addons\.mozilla\.org\//
+  : /^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/;
+
 export function isScriptable(url = "") {
-  return (
-    !/^(chrome|edge|about|devtools|chrome-extension|moz-extension|view-source|resource):/.test(url) &&
-    !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore|addons\.mozilla\.org)/.test(url)
-  );
+  return !/^(chrome|edge|about|devtools|chrome-extension|moz-extension|view-source|resource):/.test(url) && !STORE.test(url);
 }
 
 export function describeTab(tab) {
