@@ -178,6 +178,14 @@ async function run(browser) {
       if (snap.includes("Hidden ad link")) throw new Error("hidden 0x0 frame leaked into the snapshot");
       return null;
     });
+    await check("a cross-origin frame added just before the snapshot still shows", async () => {
+      await evaluate(`(() => { const f = document.createElement("iframe"); f.id = "late"; f.width = 300; f.height = 60;
+        f.src = document.getElementById("cross").src + "?late"; document.body.append(f); return true; })()`);
+      const snap = await text("snapshot", { interactiveOnly: true });
+      await evaluate(`(document.getElementById("late").remove(), true)`);
+      const n = (snap.match(/button "Cross button" \[f\d+:e\d+\]/g) || []).length;
+      if (n !== 2) throw new Error(`${n} cross-origin frames in the snapshot, expected 2`);
+    });
     await check("click by name, through shadow DOM and frames", async () => {
       for (const n of ["Shadow closed", "Deep button", "Send now", "Row two"]) await text("click", { name: n });
       const t = await evaluate("window.__t");

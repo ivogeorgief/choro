@@ -978,6 +978,18 @@
       return myFrameToken;
     },
 
+    // Frames that loaded after the snapshot missed their token: send it again.
+    repostFrameTokens({ tokens }) {
+      for (const t of tokens) {
+        const f = frameTokens.get(t)?.deref();
+        try {
+          f?.contentWindow?.postMessage({ __choroFrameToken: t }, "*");
+        } catch {
+          /* frame gone */
+        }
+      }
+    },
+
     // Where a cross-origin child frame's content starts, in this page's top coordinates.
     frameRect({ token, scroll = false }) {
       const f = frameTokens.get(token)?.deref();

@@ -30,6 +30,26 @@ async function frameIdsByToken(tabId) {
   return map;
 }
 
+const FRAME_WAIT_MS = 1500;
+
+function injectPageScript(tabId) {
+  return pageWork(tabId, () => chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["page.js"] })).catch((err) => {
+    if (/^The page is blocked/.test(err.message)) throw err;
+  });
+}
+
+// Frames still loading at snapshot time get page.js now, then their tokens again.
+async function resendTokens(tabId, tokens) {
+  await injectPageScript(tabId);
+  await pageWork(tabId, () =>
+    chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (tokens) => (typeof window.__choro?.run === "function" ? window.__choro.run("repostFrameTokens", { tokens }) : null),
+      args: [tokens],
+    })
+  ).catch(() => {});
+}
+
 async function replaceAsync(text, re, fn) {
   const parts = [];
   let last = 0;
@@ -43,16 +63,20 @@ async function replaceAsync(text, re, fn) {
 
 export async function snapshotWithFrames(tab, args) {
   // Every frame must be listening before the parent hands out tokens.
-  await pageWork(tab.id, () => chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["page.js"] })).catch(
-    (err) => {
-      if (/^The page is blocked/.test(err.message)) throw err;
-    }
-  );
+  await injectPageScript(tab.id);
   let text = await runInPage(tab, "snapshot", args);
   const { interactiveOnly, maxLength } = args;
   for (let round = 0; round < 4 && text.includes("\u0001frame:"); round++) {
-    await sleep(50); // tokens travel by postMessage
-    const ids = await frameIdsByToken(tab.id);
+    // Tokens travel by postMessage, and a frame that is still loading answers
+    // only once page.js runs in it: give missing frames up to a second and a half.
+    const wanted = [...text.matchAll(FRAME_MARK_RE)].map((m) => m[2]);
+    let ids = new Map();
+    for (let waited = 0; waited < FRAME_WAIT_MS; waited += 100) {
+      await sleep(waited ? 100 : 50);
+      ids = await frameIdsByToken(tab.id);
+      if (wanted.every((t) => ids.has(t))) break;
+      if (waited) await resendTokens(tab.id, wanted.filter((t) => !ids.has(t)));
+    }
     text = await replaceAsync(text, FRAME_MARK_RE, async (_, indent, token, parent) => {
       const frameId = ids.get(token);
       if (frameId == null) return `${indent}(contents not available)`;
