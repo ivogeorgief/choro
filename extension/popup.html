@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; --muted: #666; --ok: #2e7d32; --warn: #f9a825; --bad: #b71c1c; }
+      @media (prefers-color-scheme: dark) { :root { --muted: #aaa; --ok: #66bb6a; --bad: #ef5350; } }
+      body { font: 13px system-ui, sans-serif; width: 290px; margin: 12px; }
+      h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+      .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; background: #bbb; flex: none; }
+      .connected .dot { background: var(--ok); }
+      .connecting .dot { background: var(--warn); }
+      .unpaired .dot { background: var(--bad); }
+      .message { color: var(--bad); font-size: 12px; min-height: 1em; line-height: 1.4; }
+      .hint { color: var(--muted); font-size: 12px; line-height: 1.4; margin: 4px 0 0; }
+      code { font-size: 11.5px; }
+      input[type=number] { width: 80px; }
+      input[type=password] { flex: 1; min-width: 0; font-family: monospace; }
+      button { cursor: pointer; }
+      hr { border: 0; border-top: 1px solid #8884; margin: 12px 0; }
+    </style>
+  </head>
+  <body>
+    <h1><img src="icons/icon32.png" width="22" height="22" alt="" />Choro</h1>
+    <div class="row" id="status"><span class="dot"></span><span id="statusText">…</span></div>
+    <div class="message" id="message"></div>
+
+    <hr />
+    <label for="key">Pairing key</label>
+    <div class="row">
+      <input type="password" id="key" placeholder="paste the key here" autocomplete="off" spellcheck="false" />
+      <button id="pair">Pair</button>
+    </div>
+    <p class="hint">Get it by running <code>npx -y choro-mcp@latest pair</code> in a terminal.</p>
+
+    <hr />
+    <div class="row">
+      <label for="enabled">Allow agent control</label>
+      <input type="checkbox" id="enabled" />
+    </div>
+    <div class="row">
+      <label for="port">Server port</label>
+      <input type="number" id="port" min="1" max="65535" step="1" />
+      <button id="save">Reconnect</button>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

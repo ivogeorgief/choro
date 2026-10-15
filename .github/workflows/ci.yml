@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - name: Syntax
+        run: for f in extension/*.js extension/bg/*.js server/*.js server/src/*.js tools/*.mjs test/*.mjs test/*.js; do node --check "$f"; done
+      - name: Server tests (pairing, sharing, hand-off)
+        run: npm test
+        working-directory: server
+      - name: Build both extensions
+        run: node tools/build.mjs --zip
+      - name: Firefox add-on lint
+        if: matrix.node == 24
+        run: npx -y web-ext@8 lint --source-dir dist/firefox
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # Branded Chrome no longer loads extensions from the command line; Chromium does.
+      # The path is assigned first, so a failed download fails the step.
+      - name: Chromium
+        run: |
+          path=$(npx -y @puppeteer/browsers install chromium@latest --format '{{path}}')
+          test -x "$path"
+          echo "CHROMIUM=$path" >> "$GITHUB_ENV"
+      - name: End to end (headless Chromium and Firefox)
+        run: node test/e2e.mjs

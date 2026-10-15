@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choro torture test</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 0 16px 40px; }
+  header.sticky { position: sticky; top: 0; background: #234; color: #fff; padding: 8px 12px; margin: 0 -16px 12px; z-index: 5; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
+  section h2 { font-size: 15px; margin: 0 0 6px; }
+  .pointer { cursor: pointer; display: inline-block; padding: 4px 10px; background: #def; border-radius: 4px; }
+  table.rows td { padding: 4px 10px; border-bottom: 1px solid #eee; }
+  .chip { display: inline-block; background: #fd8; padding: 0 6px; margin-right: 4px; border-radius: 3px; }
+  .covered-wrap { position: relative; display: inline-block; }
+  .overlay { position: absolute; inset: -6px; background: rgba(200, 30, 30, .35); }
+  #results { white-space: pre; background: #f6f6f6; padding: 8px; font: 12px/1.4 monospace; }
+  #tall { height: 4000px; background: linear-gradient(#fff, #9cf); }
+</style>
+</head>
+<body>
+<header class="sticky">Choro torture test — sticky header (must not repeat in full-page screenshots)</header>
+
+<p>Each section records what really happened into <code>window.__t</code> and the results table at the bottom.</p>
+
+<!-- 1. Finding elements ------------------------------------------------------>
+<section id="s-shadow">
+  <h2>1. Shadow DOM</h2>
+  <open-shadow></open-shadow>
+  <closed-shadow></closed-shadow>
+</section>
+
+<section id="s-pointer">
+  <h2>2. Script-driven buttons</h2>
+  <div class="pointer" id="pointer-div">Pointer div</div>
+  <span id="no-cursor-div">No cursor div</span>
+  <button id="svg-btn" aria-label="Settings icon"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#555"/></svg></button>
+</section>
+
+<section id="s-rows">
+  <h2>3. Rows clickable only through the table's handler</h2>
+  <table class="rows" id="rows">
+    <tr data-row="1"><td>Row one</td><td>alpha</td></tr>
+    <tr data-row="2"><td>Row two</td><td>beta</td></tr>
+    <tr data-row="3"><td>Row three</td><td>gamma</td></tr>
+  </table>
+</section>
+
+<section id="s-dupes">
+  <h2>4. Duplicate and split labels</h2>
+  <button id="save-hidden" style="display:none">Save</button>
+  <button id="save-visible">Save</button>
+  <button id="split">Send <b>now</b></button>
+</section>
+
+<!-- 2. Frames ---------------------------------------------------------------->
+<section id="s-frames">
+  <h2>5. Frames</h2>
+  <iframe id="nested" src="frame-inner.html" title="Nested same-origin" width="420" height="150"></iframe>
+  <iframe id="editor-frame" title="Design-mode editor" width="420" height="80"></iframe>
+  <div id="ce" contenteditable="true" style="border:1px solid #999;padding:4px;min-height:24px" aria-label="Rich editor"></div>
+  <iframe id="cross" title="Cross-origin" width="420" height="80"></iframe>
+  <iframe id="hidden-frame" width="0" height="0" style="border:0" title="Hidden ad frame"></iframe>
+</section>
+
+<!-- 3. Input ----------------------------------------------------------------->
+<section id="s-input">
+  <h2>6. Input</h2>
+  <label>Controlled <input id="controlled" placeholder="controlled"></label>
+  <button id="trusted-only">Trusted only</button>
+  <div>Recipients: <span id="chips"></span><input id="chip-input" placeholder="add recipient"></div>
+  <form id="search-form"><textarea id="search-box" name="q" rows="1" placeholder="Search box"></textarea>
+    <button type="submit" style="display:none">Stop recording</button><button type="submit">Search</button></form>
+  <label>Fruit <select id="fruit"><option value="">--</option><option value="a">Apple</option><option value="b">Banana</option></select></label>
+  <label><input type="checkbox" id="agree"> I agree</label>
+</section>
+
+<!-- 4. Dialogs --------------------------------------------------------------->
+<section id="s-dialogs">
+  <h2>7. Dialogs</h2>
+  <button id="d-alert" onclick="alert('Plain alert'); rec('alert', 'closed')">Alert</button>
+  <button id="d-confirm" onclick="rec('confirm', confirm('Delete everything?'))">Confirm</button>
+  <button id="d-prompt" onclick="rec('prompt', prompt('Your name?', 'nobody'))">Prompt</button>
+  <button id="d-two" onclick="rec('two', [confirm('First?'), confirm('Second?')])">Two dialogs</button>
+  <label><input type="checkbox" id="leave-guard"> Ask before leaving</label>
+</section>
+
+<!-- 5. Navigation and timing ------------------------------------------------>
+<section id="s-nav">
+  <h2>8. Navigation and timing</h2>
+  <a href="#anchor-target" id="hash-link">Hash link</a>
+  <a href="#" id="push-link" onclick="history.pushState({}, '', '/virtual/page'); rec('push', location.pathname); return false">pushState link</a>
+  <a href="frame-inner.html" target="_blank" id="blank-link">New tab link</a>
+  <button id="open-btn" onclick="window.open('frame-inner.html', '_blank'); rec('open', true)">window.open</button>
+  <button id="slow-btn" onclick="setTimeout(() => { document.getElementById('slow-out').textContent = 'Loaded late!'; rec('slow', true) }, 2000)">Load later</button>
+  <span id="slow-out"></span>
+</section>
+
+<!-- 6. Layout ---------------------------------------------------------------->
+<section id="s-layout">
+  <h2>9. Layout</h2>
+  <span class="covered-wrap"><button id="covered" onclick="rec('covered', 'button')">Covered button</button><span class="overlay" id="overlay" onclick="rec('covered', 'overlay')"></span></span>
+  <div id="feed" style="height:120px;overflow:auto;border:1px solid #aaa"></div>
+</section>
+
+<section id="s-login">
+  <h2>10. Login with a pushy password manager</h2>
+  <form id="login" onsubmit="event.preventDefault(); rec('login', { user: this.user.value, passOk: this.pass.value === 'right-pass' })">
+    <input name="user" id="login-user" placeholder="Username" autocomplete="username">
+    <input name="pass" id="login-pass" type="password" placeholder="Password" autocomplete="current-password">
+    <button>Log in</button>
+  </form>
+</section>
+
+<h2 id="anchor-target">Results</h2>
+<div id="results">(nothing yet)</div>
+<div id="tall"></div>
+
+<script>
+  // ?nologin drops the login form: password managers (LastPass) put a frame into pages with
+  // login fields, and Chrome then refuses the debugger, which trusted input and dialogs need.
+  if (location.search.includes('nologin')) document.getElementById('s-login').remove();
+  const CROSS = location.origin.replace(/:(\d+)$/, (_, p) => ':' + (Number(p) + 1));
+  window.__t = {};
+  function rec(k, v) {
+    window.__t[k] = v;
+    document.getElementById('results').textContent =
+      Object.entries(window.__t).map(([a, b]) => a.padEnd(14) + JSON.stringify(b)).join('\n');
+  }
+
+  // 1. Shadow DOM
+  for (const mode of ['open', 'closed']) {
+    customElements.define(mode + '-shadow', class extends HTMLElement {
+      constructor() {
+        super();
+        const root = this.attachShadow({ mode });
+        root.innerHTML = `<button>Shadow ${mode}</button>`;
+        root.querySelector('button').onclick = () => rec('shadow_' + mode, true);
+      }
+    });
+  }
+
+  // 2. Script-driven
+  document.getElementById('pointer-div').addEventListener('click', () => rec('pointer', true));
+  document.getElementById('no-cursor-div').addEventListener('click', () => rec('nocursor', true));
+  document.getElementById('svg-btn').addEventListener('click', () => rec('svg', true));
+
+  // 3. Rows (delegated, like GWT tables)
+  document.getElementById('rows').addEventListener('click', (e) => rec('row', e.target.closest('tr')?.dataset.row));
+
+  // 4. Dupes and split label
+  document.getElementById('save-hidden').onclick = () => rec('save', 'hidden');
+  document.getElementById('save-visible').onclick = () => rec('save', 'visible');
+  document.getElementById('split').onclick = () => rec('split', true);
+
+  // 5. Frames
+  const ed = document.getElementById('editor-frame');
+  ed.srcdoc = '<body style="font:14px sans-serif"></body>';
+  ed.onload = () => { ed.contentDocument.designMode = 'on'; };
+  document.getElementById('ce').addEventListener('input', (e) => rec('contenteditable', e.target.innerText));
+  document.getElementById('cross').src = CROSS + '/cross.html';
+  document.getElementById('hidden-frame').srcdoc = '<a href="https://example.com/ad1">Hidden ad link one</a><a href="https://example.com/ad2">Hidden ad link two</a>';
+
+  // 6. Input
+  // Controlled input, React-style: the app keeps its own state from input events and
+  // re-renders the DOM value from it, so a value set without an input event is lost.
+  const ctl = document.getElementById('controlled');
+  let ctlState = '';
+  ctl.addEventListener('input', () => { ctlState = ctl.value; rec('controlled', ctlState); });
+  ctl.addEventListener('blur', () => { ctl.value = ctlState; });
+  document.getElementById('trusted-only').addEventListener('click', (e) => rec('trusted', e.isTrusted ? 'trusted' : 'ignored synthetic'));
+  // Recipient chips: Enter, comma or Tab turn the typed text into a chip.
+  const chipIn = document.getElementById('chip-input');
+  chipIn.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ',' || e.key === 'Tab') && chipIn.value.trim()) {
+      e.preventDefault();
+      const c = document.createElement('span');
+      c.className = 'chip';
+      c.textContent = chipIn.value.trim().replace(/,$/, '');
+      document.getElementById('chips').append(c);
+      chipIn.value = '';
+      rec('chips', [...document.querySelectorAll('.chip')].map((x) => x.textContent));
+    }
+  });
+  // Textarea search: a site script (like Google's) submits on Enter only for trusted events.
+  document.getElementById('search-box').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.isTrusted) { e.preventDefault(); e.target.form.requestSubmit(); }
+  });
+  document.getElementById('search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    rec('search', { q: e.target.q.value, submitter: e.submitter?.textContent || null });
+  });
+  document.getElementById('fruit').addEventListener('change', (e) => rec('fruit', e.target.value));
+  document.getElementById('agree').addEventListener('change', (e) => rec('agree', e.target.checked));
+
+  // 7. Leave guard
+  window.addEventListener('beforeunload', (e) => { if (document.getElementById('leave-guard').checked) { e.preventDefault(); e.returnValue = ''; } });
+
+  // Cross-origin frame reports its clicks by message.
+  window.addEventListener('message', (e) => { if (e.data?.choroTest) rec(e.data.choroTest, e.data.trusted ? 'trusted' : 'synthetic'); });
+
+  // 8. Hash
+  window.addEventListener('hashchange', () => rec('hash', location.hash));
+
+  // 10. A fake password manager that fills the login again 300 ms after anyone changes it.
+  for (const id of ['login-user', 'login-pass']) {
+    document.getElementById(id)?.addEventListener('input', () => {
+      clearTimeout(window.__pm);
+      window.__pm = setTimeout(() => {
+        document.getElementById('login-user').value = 'saved-user';
+        document.getElementById('login-pass').value = 'saved-pass';
+      }, 300);
+    });
+  }
+
+  // 9. Infinite feed
+  const feed = document.getElementById('feed');
+  let n = 0;
+  const more = () => { for (let i = 0; i < 10; i++) { const d = document.createElement('div'); d.textContent = 'Feed item ' + (++n); feed.append(d); } rec('feed', n); };
+  more();
+  feed.addEventListener('scroll', () => { if (feed.scrollTop + feed.clientHeight > feed.scrollHeight - 20) more(); });
+</script>
+</body>
+</html>

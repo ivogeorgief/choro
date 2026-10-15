@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Inner frame</title></head>
+<body style="font:14px sans-serif">
+  <button id="inner-btn">Inner button</button>
+  <input id="inner-input" placeholder="inner input">
+  <button id="inner-confirm">Inner confirm</button>
+  <iframe id="deeper" title="Deeper frame" width="300" height="50"
+    srcdoc="<button onclick=&quot;parent.parent.rec('deep', true)&quot;>Deep button</button>"></iframe>
+  <script>
+    const top_ = window.parent !== window && window.parent.rec ? window.parent : null;
+    const rec = (k, v) => top_?.rec(k, v);
+    document.getElementById('inner-btn').onclick = () => rec('inner_click', true);
+    document.getElementById('inner-input').addEventListener('input', (e) => rec('inner_input', e.target.value));
+    document.getElementById('inner-confirm').onclick = () => rec('inner_confirm', confirm('Confirm inside a frame?'));
+  </script>
+</body>
+</html>

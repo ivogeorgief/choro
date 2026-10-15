@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choro network test</title>
+<link rel="stylesheet" href="network.css">
+<style>body { font: 15px/1.4 system-ui, sans-serif; padding: 0 16px; } button { margin: 4px; } #log { white-space: pre; font: 12px monospace; }</style>
+</head>
+<body>
+<h1>Choro network test</h1>
+<p>Each button makes requests the network tools should see. Needs <code>test/serve.py</code>.</p>
+<button id="get">Fetch GET</button>
+<button id="post">Fetch POST JSON</button>
+<button id="form-post">XHR POST form</button>
+<button id="fail">Fetch 500</button>
+<button id="missing">Fetch 404</button>
+<button id="offline">Fetch unreachable host</button>
+<button id="secret">Fetch with Authorization</button>
+<button id="login">XHR login form</button>
+<button id="ws">WebSocket hello</button>
+<button id="burst">Ten requests</button>
+<div id="log"></div>
+<script src="network-app.js"></script>
+</body>
+</html>

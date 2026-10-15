@@ -1,0 +1,15 @@
+{
+  "name": "choro-workspace",
+  "private": true,
+  "description": "Development scripts for Choro (the extension and the choro-mcp server)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "release": "node tools/build.mjs --zip",
+    "test": "npm --prefix server test",
+    "e2e": "node test/e2e.mjs",
+    "lint:firefox": "node tools/build.mjs && npx -y web-ext@8 lint --source-dir dist/firefox",
+    "serve:test": "python3 test/serve.py"
+  }
+}

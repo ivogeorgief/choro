@@ -1,0 +1,63 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching the versions in extension/manifest.json and
+# server/package.json) to build the extensions, create a GitHub release and
+# publish the server to npm.
+#   npm: trusted publishing (configure this repository and workflow as a trusted
+#        publisher of choro-mcp on npmjs.com); no token needed.
+#   Firefox: set the WEB_EXT_API_KEY / WEB_EXT_API_SECRET secrets (addons.mozilla.org
+#        API keys) to have Mozilla sign the add-on; otherwise no .xpi is attached.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the GitHub release
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # Secrets can't be tested in a step's `if`; this says whether they are set.
+      HAS_AMO_KEYS: ${{ secrets.WEB_EXT_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Versions match the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ext=$(node -p "require('./extension/manifest.json').version")
+          srv=$(node -p "require('./server/package.json').version")
+          [ "$tag" = "$ext" ] && [ "$tag" = "$srv" ] || { echo "tag $tag, manifest $ext, server $srv"; exit 1; }
+      - run: npm ci && npm test
+        working-directory: server
+      - name: Build
+        run: node tools/build.mjs --zip
+      - name: Sign the Firefox add-on (self-distributed)
+        if: env.HAS_AMO_KEYS == 'true'
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          npx -y web-ext@8 sign --source-dir dist/firefox --channel unlisted --artifacts-dir dist/signed
+          mv dist/signed/*.xpi "dist/choro-firefox-${GITHUB_REF_NAME#v}.xpi"
+      # Release Firefox can only install the signed .xpi, so the unsigned zip isn't attached.
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --generate-notes dist/choro-chrome-*.zip $(ls dist/*.xpi 2>/dev/null)
+      - name: Publish choro-mcp to npm
+        working-directory: server
+        run: |
+          if npm view "choro-mcp@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
+            echo "choro-mcp ${GITHUB_REF_NAME#v} is already on npm"
+          else
+            npm publish --access public
+          fi

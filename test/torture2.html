@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choro torture test 2</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 0 16px 40px; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
+  section h2 { font-size: 15px; margin: 0 0 6px; }
+  .menu { position: relative; display: inline-block; }
+  .menu .sub { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #999; padding: 4px; z-index: 3; }
+  .menu:hover .sub { display: block; }
+  .dd-list { border: 1px solid #999; display: none; }
+  .dd-list.open { display: block; }
+  .dd-item { cursor: pointer; padding: 2px 6px; }
+  [role=listbox] { border: 1px solid #999; margin: 0; padding: 0; list-style: none; }
+  [role=option][aria-selected=true] { background: #cdf; }
+  #virtual { height: 160px; overflow: auto; border: 1px solid #aaa; position: relative; }
+  .vrow { position: absolute; left: 0; right: 0; height: 24px; padding: 0 6px; }
+  #drop { display: inline-block; width: 160px; height: 40px; border: 2px dashed #888; vertical-align: middle; }
+  #drag-me { display: inline-block; padding: 4px 10px; background: #fd8; cursor: grab; }
+  #results table { border-collapse: collapse; font: 12px/1.4 monospace; }
+  #results td { border: 1px solid #ddd; padding: 2px 6px; }
+  .PASS { color: #070; font-weight: bold; } .FAIL { color: #b00; font-weight: bold; } .TODO { color: #888; }
+</style>
+</head>
+<body>
+<h1>Choro torture test 2</h1>
+<p>Every case says what counts as a pass; the table at the bottom (<code>#results</code>) shows PASS, FAIL or TODO (not tried yet).</p>
+
+<section id="s-controls">
+  <h2>A. Form controls</h2>
+  <label>Date <input type="date" id="date"></label>
+  <label>Time <input type="time" id="time"></label>
+  <label>Color <input type="color" id="color" value="#000000"></label>
+  <label>Volume <input type="range" id="range" min="0" max="100" value="10"></label>
+  <label>Count <input type="number" id="number" step="5"></label>
+  <fieldset><legend>Size</legend>
+    <label><input type="radio" name="size" value="s"> Small</label>
+    <label><input type="radio" name="size" value="m"> Medium</label>
+    <label><input type="radio" name="size" value="l"> Large</label>
+  </fieldset>
+  <label>Toppings <select id="multi" multiple size="4"><option>Cheese</option><option>Ham</option><option>Olives</option><option>Pepper</option></select></label>
+  <label>Read only <input id="readonly" readonly value="locked"></label>
+  <label>Max 5 <input id="maxlen" maxlength="5"></label>
+  <form id="req-form" onsubmit="event.preventDefault(); rec('req_submitted', true)">
+    <label>Email (required) <input type="email" id="req-email" name="email" required></label>
+    <button>Send form</button>
+  </form>
+</section>
+
+<section id="s-widgets">
+  <h2>B. Widgets</h2>
+  <div>
+    <label for="combo">Fruit search</label>
+    <input id="combo" role="combobox" aria-expanded="false" aria-controls="combo-list" autocomplete="off">
+    <ul id="combo-list" role="listbox" hidden></ul>
+  </div>
+  <div>
+    <div class="dd" id="dd"><span class="dd-item" id="dd-toggle">Choose a city ▾</span>
+      <div class="dd-list" id="dd-list"><div class="dd-item">Sofia</div><div class="dd-item">Plovdiv</div><div class="dd-item">Varna</div></div></div>
+  </div>
+  <div>Model editor: <div id="model-editor" contenteditable="true" aria-label="Model editor" style="border:1px solid #999;min-height:24px;padding:2px"></div></div>
+  <div class="menu"><span id="menu-top">Account menu (CSS hover)</span><div class="sub"><a href="#" id="menu-logout" onclick="rec('hover_menu', true); return false">Log out</a></div></div>
+  <button id="late-enable" disabled onclick="rec('late_enabled', true)">Enabled after 1.5 s</button>
+  <button id="open-modal">Open modal</button>
+  <button id="behind-modal" onclick="rec('behind_modal', 'clicked')">Behind the modal</button>
+  <dialog id="modal"><p>Modal dialog</p><button id="modal-ok" onclick="rec('modal_ok', true); this.closest('dialog').close()">Modal OK</button></dialog>
+  <div><canvas id="canvas" width="300" height="60" style="border:1px solid #999"></canvas></div>
+  <div><span id="drag-me" draggable="true">Drag me</span> → <span id="drop">drop here</span></div>
+  <div>Virtual list (10,000 rows, only visible ones exist):<div id="virtual"><div id="vspacer"></div></div></div>
+</section>
+
+<section id="s-text">
+  <h2>C. Text and naming</h2>
+  <label>Unicode <input id="unicode"></label>
+  <label>Long <textarea id="long" rows="2"></textarea></label>
+  <table id="delete-rows">
+    <tr><td>Invoice 1</td><td><button onclick="rec('ambiguous', 1)">Delete</button></td></tr>
+    <tr><td>Invoice 2</td><td><button onclick="rec('ambiguous', 2)">Delete</button></td></tr>
+  </table>
+  <svg width="140" height="30"><text x="4" y="20" id="svg-text" style="cursor:pointer">SVG text button</text></svg>
+  <shadow-form></shadow-form>
+</section>
+
+<section id="s-nav">
+  <h2>D. Navigation (needs test/serve.py)</h2>
+  <a href="/slow?ms=4000" id="slow-link">Slow page (4 s)</a> ·
+  <a href="/redirect?n=3" id="redirect-link">Redirect chain</a> ·
+  <a href="/download" id="download-link">Download a file</a> ·
+  <a href="/alert-on-load" id="alert-load-link">Page with alert on load</a>
+  <form id="post-form" method="post" action="/echo">
+    <input name="city" id="post-city" placeholder="city"> <input name="note" id="post-note" placeholder="note">
+    <button>Post it</button>
+  </form>
+  <label><input type="checkbox" id="leave-guard"> Ask before leaving</label>
+  <button id="huge-btn">Build 30,000 elements</button>
+  <div id="huge"></div>
+</section>
+
+<h2>Results</h2>
+<div id="results"></div>
+
+<script>
+  // --- self-checking harness ---------------------------------------------------
+  const tests = [];
+  window.__t = {};
+  function test(id, desc, check) { tests.push({ id, desc, check }); }
+  function rec(id, value) { window.__t[id] = value; render(); }
+  function render() {
+    const rows = tests.map(({ id, desc, check }) => {
+      const has = id in window.__t;
+      const ok = has && check(window.__t[id]);
+      const status = !has ? 'TODO' : ok ? 'PASS' : 'FAIL';
+      return `<tr><td>${id}</td><td class="${status}">${status}</td><td>${desc}</td><td>${has ? JSON.stringify(window.__t[id]).slice(0, 80) : ''}</td></tr>`;
+    });
+    document.getElementById('results').innerHTML = `<table>${rows.join('')}</table>`;
+    window.__summary = Object.fromEntries(['PASS', 'FAIL', 'TODO'].map((s) =>
+      [s, tests.filter(({ id, check }) => (s === 'TODO' ? !(id in window.__t) : (id in window.__t) && (check(window.__t[id]) === (s === 'PASS')))).map((t) => t.id)]));
+  }
+  const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, fn);
+
+  // --- A. form controls ----------------------------------------------------------
+  test('date', 'date input set to 2026-10-07', (v) => v === '2026-10-07');
+  test('time', 'time input set to 14:30', (v) => v === '14:30');
+  test('color', 'color set to #ff0000', (v) => v === '#ff0000');
+  test('range', 'range set to 70', (v) => v === '70');
+  test('number', 'number set to 25', (v) => v === '25');
+  test('radio', 'radio "Medium" chosen', (v) => v === 'm');
+  test('multi', 'multi-select Ham + Olives', (v) => JSON.stringify(v) === '["Ham","Olives"]');
+  test('readonly', 'read-only field left unchanged', (v) => v === 'locked');
+  test('maxlen', 'maxlength 5 respected', (v) => v === 'abcde');
+  test('req_blocked', 'submitting with empty required email is refused', (v) => v === true);
+  for (const id of ['date', 'time', 'color', 'range', 'number']) on(id, 'change', (e) => rec(id, e.target.value));
+  document.querySelectorAll('input[name=size]').forEach((r) => r.addEventListener('change', () => rec('radio', r.value)));
+  on('multi', 'change', (e) => rec('multi', [...e.target.selectedOptions].map((o) => o.text)));
+  on('readonly', 'input', (e) => rec('readonly', e.target.value));
+  setInterval(() => { const r = document.getElementById('readonly').value; if (r !== 'locked') rec('readonly', r); }, 300);
+  on('maxlen', 'input', (e) => rec('maxlen', e.target.value));
+  on('req-email', 'invalid', () => rec('req_blocked', true));
+
+  // --- B. widgets ------------------------------------------------------------------
+  test('combo', 'combobox: typed "ban", picked Banana from the list', (v) => v === 'Banana');
+  test('dropdown', 'custom dropdown: picked Varna', (v) => v === 'Varna');
+  test('model', 'beforeinput-only editor holds "hello model"', (v) => v === 'hello model');
+  test('hover_menu', 'CSS-hover menu item "Log out" clicked', (v) => v === true);
+  test('late_enabled', 'button clicked once it became enabled', (v) => v === true);
+  test('modal_ok', 'modal dialog button clicked', (v) => v === true);
+  test('behind_modal', 'button behind an open modal NOT activated', (v) => v !== 'clicked');
+  test('canvas', 'canvas-drawn "OK" button clicked (right part of the canvas)', (v) => v === 'ok');
+  test('drag', 'dragged "Drag me" onto the drop zone', (v) => v === true);
+  test('virtual', 'clicked row "Item 5000" of the virtual list', (v) => v === 5000);
+
+  const FRUITS = ['Apple', 'Apricot', 'Banana', 'Blueberry', 'Cherry'];
+  const combo = document.getElementById('combo'), list = document.getElementById('combo-list');
+  let active = -1;
+  function renderCombo() {
+    const q = combo.value.toLowerCase();
+    const items = q ? FRUITS.filter((f) => f.toLowerCase().includes(q)) : [];
+    list.innerHTML = items.map((f, i) => `<li role="option" id="opt-${i}" aria-selected="${i === active}">${f}</li>`).join('');
+    list.hidden = !items.length;
+    combo.setAttribute('aria-expanded', String(!!items.length));
+  }
+  combo.addEventListener('input', () => { active = -1; renderCombo(); });
+  combo.addEventListener('keydown', (e) => {
+    const n = list.children.length;
+    if (e.key === 'ArrowDown' && n) { active = (active + 1) % n; renderCombo(); e.preventDefault(); }
+    if (e.key === 'Enter' && active >= 0) { pick(list.children[active].textContent); e.preventDefault(); }
+  });
+  // Options are picked on mousedown (before the input blurs), as most comboboxes do.
+  list.addEventListener('mousedown', (e) => { const o = e.target.closest('[role=option]'); if (o) { pick(o.textContent); e.preventDefault(); } });
+  combo.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 150));
+  function pick(v) { combo.value = v; list.hidden = true; rec('combo', v); }
+
+  on('dd-toggle', 'click', () => document.getElementById('dd-list').classList.toggle('open'));
+  document.querySelectorAll('#dd-list .dd-item').forEach((it) => it.addEventListener('click', () => {
+    document.getElementById('dd-toggle').textContent = it.textContent + ' ▾';
+    document.getElementById('dd-list').classList.remove('open');
+    rec('dropdown', it.textContent);
+  }));
+
+  // An editor that owns its model, like ProseMirror or Lexical: it cancels the
+  // browser's editing and applies beforeinput events to its own state.
+  let model = '';
+  const me = document.getElementById('model-editor');
+  me.addEventListener('beforeinput', (e) => {
+    e.preventDefault();
+    if (e.inputType === 'insertText' || e.inputType === 'insertReplacementText') model += e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
+    else if (e.inputType.startsWith('delete')) model = e.inputType === 'deleteContentBackward' && me.ownerDocument.getSelection().toString() !== me.textContent ? model.slice(0, -1) : '';
+    me.textContent = model;
+    const r = document.createRange(); r.selectNodeContents(me); r.collapse(false);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    rec('model', model);
+  });
+
+  setTimeout(() => { document.getElementById('late-enable').disabled = false; }, 1500);
+  on('open-modal', 'click', () => document.getElementById('modal').showModal());
+
+  // Canvas with two drawn buttons; only the right one ("OK") counts.
+  const cv = document.getElementById('canvas'), cx = cv.getContext('2d');
+  cx.fillStyle = '#ddd'; cx.fillRect(10, 10, 80, 40); cx.fillRect(210, 10, 80, 40);
+  cx.fillStyle = '#000'; cx.font = '16px sans-serif'; cx.fillText('Cancel', 22, 36); cx.fillText('OK', 238, 36);
+  cv.addEventListener('click', (e) => {
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left;
+    rec('canvas', x > 200 ? 'ok' : x < 100 ? 'cancel' : 'nothing (x=' + Math.round(x) + ')');
+  });
+
+  on('drag-me', 'dragstart', (e) => e.dataTransfer.setData('text/plain', 'drag-me'));
+  on('drop', 'dragover', (e) => e.preventDefault());
+  on('drop', 'drop', (e) => { e.preventDefault(); rec('drag', e.dataTransfer.getData('text/plain') === 'drag-me'); });
+
+  // Virtual list: only the rows in view exist in the DOM.
+  const vl = document.getElementById('virtual'), sp = document.getElementById('vspacer');
+  sp.style.height = 10000 * 24 + 'px';
+  function renderVirtual() {
+    const first = Math.floor(vl.scrollTop / 24), last = Math.min(9999, first + 8);
+    vl.querySelectorAll('.vrow').forEach((r) => r.remove());
+    for (let i = first; i <= last; i++) {
+      const r = document.createElement('div');
+      r.className = 'vrow'; r.style.top = i * 24 + 'px'; r.textContent = 'Item ' + (i + 1);
+      r.onclick = () => rec('virtual', i + 1);
+      vl.append(r);
+    }
+  }
+  vl.addEventListener('scroll', renderVirtual); renderVirtual();
+
+  // --- C. text and naming ----------------------------------------------------------
+  test('unicode', 'typed "Здравей 🎉 日本語"', (v) => v === 'Здравей 🎉 日本語');
+  test('long', 'typed at least 3000 characters', (v) => v >= 3000);
+  test('ambiguous', 'name "Delete" clicked one of two (which one is reported)', (v) => v === 1 || v === 2);
+  test('svg_text', 'SVG text clicked', (v) => v === true);
+  test('shadow_form', 'form in a closed shadow root submitted with "shadow@x.bg"', (v) => v === 'shadow@x.bg');
+  on('unicode', 'input', (e) => rec('unicode', e.target.value));
+  on('long', 'input', (e) => rec('long', e.target.value.length));
+  on('svg-text', 'click', () => rec('svg_text', true));
+  customElements.define('shadow-form', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'closed' });
+      root.innerHTML = '<form><label>Shadow email <input name="e"></label> <button>Shadow submit</button></form>';
+      root.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); rec('shadow_form', e.target.e.value); });
+    }
+  });
+
+  // --- D. navigation -----------------------------------------------------------------
+  window.addEventListener('beforeunload', (e) => { if (document.getElementById('leave-guard').checked) { e.preventDefault(); e.returnValue = ''; } });
+  on('huge-btn', 'click', () => {
+    const h = document.getElementById('huge');
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 3000; i++) {
+      const d = document.createElement('div');
+      d.innerHTML = '<span>row ' + i + '</span><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><a href="#">x</a>';
+      frag.append(d);
+    }
+    h.append(frag);
+  });
+
+  render();
+</script>
+</body>
+</html>

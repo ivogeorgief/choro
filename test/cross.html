@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cross-origin frame</title></head>
+<body style="font:14px sans-serif;background:#ffe">
+  Cross-origin content: <button id="cross-btn">Cross button</button>
+  <script>
+    document.getElementById('cross-btn').onclick = (e) =>
+      parent.postMessage({ choroTest: 'cross_click', trusted: e.isTrusted }, '*');
+  </script>
+</body>
+</html>
