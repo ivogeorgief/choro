@@ -1,6 +1,6 @@
 {
   "name": "choro-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server that lets coding agents (Claude Code and other MCP clients) drive your real Chrome or Firefox through the Choro extension",
   "keywords": [
     "mcp",
