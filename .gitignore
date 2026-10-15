@@ -5,3 +5,4 @@ dist-test/
 *.log
 .env
 .DS_Store
+store/chrome-web-store.html

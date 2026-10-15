@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Choro: a "C" with a mouse cursor in its opening, an agent driving the browser. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bg)"/>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#shine)"/>
+  <!-- The C: a thick ring open towards the lower right -->
+  <path d="M 82.3 41.4 A 33 33 0 1 0 82.3 82.6" fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round"/>
+  <!-- The cursor, outlined in the tile's colour so it stands apart from the ring -->
+  <path d="M 69 55 L 69 101 L 80.5 89.5 L 89 107 L 98 103 L 89.5 86 L 105 86 Z"
+        fill="#ffffff" stroke="#3b3fc9" stroke-width="5" stroke-linejoin="round"/>
+</svg>

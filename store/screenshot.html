@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0}
+body{width:1280px;height:800px;overflow:hidden;font-family:"Noto Sans","DejaVu Sans",sans-serif;background:linear-gradient(135deg,#4f46e5,#0ea5e9);color:#fff;padding:48px 56px}
+.top{display:flex;align-items:center;gap:20px}
+.top img{width:72px;height:72px}
+h1{font-size:40px;font-weight:700;letter-spacing:-.5px}
+.sub{font-size:20px;opacity:.9;margin-top:6px}
+.cols{display:flex;gap:28px;margin-top:36px}
+.term{flex:1.15;background:#0f172a;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35);overflow:hidden}
+.bar{background:#1e293b;padding:10px 14px;display:flex;gap:7px;align-items:center;font-size:13px;color:#94a3b8}
+.dot{width:11px;height:11px;border-radius:50%;background:#475569}
+pre{font-family:"Noto Sans Mono","DejaVu Sans Mono",monospace;font-size:14.5px;line-height:1.55;padding:18px 20px;color:#cbd5e1;white-space:pre-wrap}
+.you{color:#f8fafc;font-weight:700}.tool{color:#7dd3fc}.out{color:#94a3b8}.ok{color:#86efac}
+.side{flex:.85;display:flex;flex-direction:column;gap:16px}
+.card{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:18px 20px}
+.card h3{font-size:18px;margin-bottom:6px}.card p{font-size:15.5px;line-height:1.45;opacity:.95}
+</style></head><body>
+<div class="top"><img src="icon.svg"><div><h1>Choro</h1><div class="sub">Let Claude Code and other MCP agents use your real browser</div></div></div>
+<div class="cols">
+<div class="term"><div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp; claude</div><pre><span class="you">&gt; find the cheapest flight to Lisbon on the airline's site and fill in my details</span>
+
+<span class="tool">● choro · open_tab</span>(url: "airline.example/flights")
+<span class="out">  ⎿ Opened tab 412 · "Flights – Search"</span>
+<span class="tool">● choro · fill_form</span>(fields: from, to, date)
+<span class="out">  ⎿ Filled textbox "From" [e4], textbox "To" [e5], date "Depart" [e7]</span>
+<span class="tool">● choro · click</span>(name: "Search flights")
+<span class="out">  ⎿ Clicked button "Search flights" [e9]
+     Page is now: Results – 14 flights
+     Network: GET api/search?to=LIS → 200</span>
+<span class="tool">● choro · snapshot</span>(interactiveOnly: true)
+<span class="out">  ⎿ link "TP 1301 · 07:05 · €89" [e31]
+     link "FR 7442 · 11:40 · €64" [e32] …</span>
+<span class="tool">● choro · click</span>(ref: "e32")
+<span class="ok">  ⎿ Clicked link "FR 7442 · 11:40 · €64" [e32]</span></pre></div>
+<div class="side">
+<div class="card"><h3>Your browser, your logins</h3><p>Agents work in the Chrome you already use: signed-in sites, cookies and extensions included. No separate headless browser.</p></div>
+<div class="card"><h3>Sees what you see</h3><p>Page outlines with refs for every control, shadow DOM and cross-origin frames, screenshots, dialogs, downloads and network requests.</p></div>
+<div class="card"><h3>Paired and local</h3><p>Talks only to the choro-mcp server on your computer, after you pair them with a key. Pause it any time from the toolbar.</p></div>
+</div></div></body></html>
