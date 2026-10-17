@@ -16,7 +16,7 @@ automation hard: shadow DOM, iframes (cross-origin too), rich text editors, scri
 
 ## Setup
 
-You need Node.js 20 or newer, and Chrome (or another Chromium browser) 116+ or Firefox 128+.
+You need Node.js 20 or newer, and Chrome (or another Chromium browser) 116+ or Firefox 140+ (142+ on Android).
 
 1. **Install the extension.**
    - Chrome: download `choro-chrome-<version>.zip` from the [releases](../../releases) and unzip it (or build it,

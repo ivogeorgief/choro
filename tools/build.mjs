@@ -48,9 +48,11 @@ function firefoxManifest(m) {
   out.browser_specific_settings = {
     gecko: {
       id: "choro@ivogeorgief",
-      strict_min_version: "128.0",
+      strict_min_version: "140.0",
       data_collection_permissions: { required: ["none"] },
     },
+    // data_collection_permissions needs Firefox 140, or 142 on Android.
+    gecko_android: { strict_min_version: "142.0" },
   };
   delete out.minimum_chrome_version;
   return out;
