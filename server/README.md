@@ -10,7 +10,9 @@ npx -y choro-mcp@latest pair                         # show the key to paste int
 
 Other MCP clients: run `npx -y choro-mcp@latest` as a stdio server.
 
-You also need the Choro browser extension; see the [project's README](https://github.com/ivogeorgief/choro#readme) for installing it, the tools agents get, and
+You also need the Choro browser extension, from the
+[Chrome Web Store](https://chromewebstore.google.com/detail/cdlpmgnndklddfbhbaoakkikbnpkoojj) or
+[Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/); see the [project's README](https://github.com/ivogeorgief/choro#readme) for installing it, the tools agents get, and
 the security model. In short: the server listens on 127.0.0.1 (port `CHORO_PORT`, default 8765), the extension
 connects to it, and both prove they know the pairing key before anything else happens. Several agent sessions can
 share one browser, and several browsers can be connected at once; the first server to start relays for the others.

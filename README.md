@@ -19,12 +19,14 @@ automation hard: shadow DOM, iframes (cross-origin too), rich text editors, scri
 You need Node.js 20 or newer, and Chrome (or another Chromium browser) 116+ or Firefox 140+ (142+ on Android).
 
 1. **Install the extension.**
-   - Chrome: download `choro-chrome-<version>.zip` from the [releases](../../releases) and unzip it (or build it,
-     see [Development](#development)). Open `chrome://extensions`, turn on *Developer mode*, click *Load unpacked*
-     and pick the unzipped folder.
-   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/) or the
-     `choro-firefox-<version>.xpi` (signed by Mozilla) from the [releases](../../releases). For development, build it
-     and load `dist/firefox/manifest.json` from `about:debugging` → *This Firefox* → *Load Temporary Add-on*.
+   - Chrome, Edge, Brave and other Chromium browsers: install it from the
+     [Chrome Web Store](https://chromewebstore.google.com/detail/cdlpmgnndklddfbhbaoakkikbnpkoojj). Or download
+     `choro-chrome-<version>.zip` from the [releases](../../releases), unzip it, open `chrome://extensions`, turn on
+     *Developer mode*, click *Load unpacked* and pick the unzipped folder.
+   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/) (the listing
+     appears once Mozilla's review is done). Until then, or for development, build it (see
+     [Development](#development)) and load `dist/firefox/manifest.json` from `about:debugging` → *This Firefox* →
+     *Load Temporary Add-on*; Firefox removes a temporary add-on when it closes.
 2. **Add the server to your agent.** For Claude Code:
    ```sh
    claude mcp add choro -- npx -y choro-mcp@latest
