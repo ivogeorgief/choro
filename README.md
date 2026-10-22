@@ -23,10 +23,9 @@ You need Node.js 20 or newer, and Chrome (or another Chromium browser) 116+ or F
      [Chrome Web Store](https://chromewebstore.google.com/detail/cdlpmgnndklddfbhbaoakkikbnpkoojj). Or download
      `choro-chrome-<version>.zip` from the [releases](../../releases), unzip it, open `chrome://extensions`, turn on
      *Developer mode*, click *Load unpacked* and pick the unzipped folder.
-   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/) (the listing
-     appears once Mozilla's review is done). Until then, or for development, build it (see
-     [Development](#development)) and load `dist/firefox/manifest.json` from `about:debugging` → *This Firefox* →
-     *Load Temporary Add-on*; Firefox removes a temporary add-on when it closes.
+   - Firefox: install it from [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/choro-mcp/). For
+     development, build it (see [Development](#development)) and load `dist/firefox/manifest.json` from
+     `about:debugging` → *This Firefox* → *Load Temporary Add-on*; Firefox removes a temporary add-on when it closes.
 2. **Add the server to your agent.** For Claude Code:
    ```sh
    claude mcp add choro -- npx -y choro-mcp@latest
